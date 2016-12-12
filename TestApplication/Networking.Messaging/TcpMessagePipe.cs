@@ -1,9 +1,10 @@
 ﻿using Networking.Core;
-using Networking.Messaging.ConnectionProcessors;
 using Networking.Messaging.Helpers;
-using Networking.Messaging.MessageProcessors;
 using System;
+using System.IO;
 using System.Net;
+using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -12,13 +13,16 @@ namespace Networking.Messaging
     public sealed class TcpMessagePipe : IDisposable
     {
         private Timer timer;
-        private TcpConnection connection;
+        private TcpClient connection;
+        private PacketStream stream;
         public event EventHandler<IMessage> WriteFailure;
-        public event EventHandler<EventArgs> ReadFailure;
-        public event EventHandler<EventArgs> InvalidMessage;
-        public event EventHandler<IMessage> MessageArrived;
+        public event EventHandler<AsyncResultEventArgs<IMessage>> MessageArrived;
+        private CancellationTokenSource cancelReading;
+        private TaskCompletionSource<object> readingCancellation;
 
-        public TcpMessagePipe(TcpConnection connection)
+        public bool IsReading { get; private set; }
+
+        public TcpMessagePipe(TcpClient connection)
         {
             this.connection = connection;
             KeepAliveTimeout = TimeSpan.FromSeconds(5);
@@ -26,19 +30,20 @@ namespace Networking.Messaging
         }
 
         public TcpMessagePipe() :
-            this(new TcpConnection())
+            this(new TcpClient())
         {
             timer.Change(Timeout.Infinite, Timeout.Infinite);
         }
 
-        public Task ConnectAsync(IPEndPoint endpoint)
+        public async Task ConnectAsync(IPEndPoint endpoint)
         {
             try
             {
                 if (endpoint == null)
                     throw new ArgumentNullException(nameof(endpoint));
 
-                return connection.ConnectAsync(endpoint);
+                await connection.ConnectAsync(endpoint.Address, endpoint.Port).ConfigureAwait(false);
+                stream = new PacketStream(connection.GetStream());
             }
             finally
             {
@@ -50,30 +55,21 @@ namespace Networking.Messaging
 
         private Task CheckConnection()
         {
-            return WriteMessageAsyncInternal(new KeepAliveMessage(), CancellationToken.None);
+            return WriteMessageAsyncInternal(KeepAliveMessage.Instance);
         }
 
         public Task WriteMessageAsync(IMessage message)
         {
-            return WriteMessageAsyncInternal(message, CancellationToken.None);
+            return WriteMessageAsyncInternal(message);
         }
 
-        private async Task WriteMessageAsyncInternal(IMessage message, CancellationToken ct)
+        private async Task WriteMessageAsyncInternal(IMessage message)
         {
             try
             {
                 timer.Change(Timeout.Infinite, Timeout.Infinite);
-                await connection.WritePacketAsync(message.ToPacket(), ct);
+                await stream.WritePacketAsync(message.ToPacket(), CancellationToken.None).ConfigureAwait(false);
                 timer.Change(KeepAliveTimeout.Milliseconds, Timeout.Infinite);
-            }
-            catch (ObjectDisposedException ex)
-            {
-                // Do nothing. Object was disposed
-            }
-            catch (OperationCanceledException ex)
-            {
-                timer.Change(KeepAliveTimeout.Milliseconds, Timeout.Infinite);
-                // Do something else if needed
             }
             catch
             {
@@ -83,39 +79,47 @@ namespace Networking.Messaging
 
         public async void StartReadingMessages()
         {
-            try
+            if (IsReading)
+                throw new InvalidOperationException("Message pipe is already reading messages");
+
+            IsReading = true;
+            cancelReading = new CancellationTokenSource();
+            readingCancellation = new TaskCompletionSource<object>();
+            while (!cancelReading.IsCancellationRequested)
             {
-                while (true)
+                try
                 {
-                    try
-                    {
-                        var packet = await connection.ReadPacketAsync(CancellationToken.None);
-                        MessageArrived?.Invoke(this, packet.ToMessage());
-                    }
-                    catch (OperationCanceledException ex)
-                    {
-                        // In case if stop reading functionality is needed
-                    }
+                    var packet = await stream.ReadPacketAsync(cancelReading.Token).ConfigureAwait(false);
+                    var message = packet.ToMessage();
+                    MessageArrived?.Invoke(this, new AsyncResultEventArgs<IMessage>(message));
+                }
+                catch (InvalidCastException)
+                {
+                    MessageArrived?.Invoke(this, new AsyncResultEventArgs<IMessage>(new InvalidDataException("Unknown type of message received")));
+                }
+                catch (Exception ex)
+                {
+                    MessageArrived?.Invoke(this, new AsyncResultEventArgs<IMessage>(ex));
                 }
             }
-            catch (InvalidCastException ex)
-            {
-                InvalidMessage?.Invoke(this, EventArgs.Empty);
-            }
-            catch (ObjectDisposedException ex)
-            {
-                // Do nothing. Object was disposed
-            }
-            catch
-            {
-                ReadFailure?.Invoke(this, EventArgs.Empty);
-            }
+            IsReading = false;
+            readingCancellation.SetResult(null);
+        }
+
+        public async Task StopReadingAsync()
+        {
+            if (!IsReading)
+                throw new InvalidOperationException("Message pipe is not running");
+
+            cancelReading.Cancel();
+            await readingCancellation.Task;
         }
 
         public void Dispose()
         {
             timer.Dispose();
-            connection.Dispose();
+            connection.Close();
+            stream?.Dispose();
         }
     }
 }

@@ -9,5 +9,6 @@ namespace Networking.Messaging
     [Serializable]
     public sealed class KeepAliveMessage : IMessage
     {
+        public static KeepAliveMessage Instance { get; } = new KeepAliveMessage();
     }
 }

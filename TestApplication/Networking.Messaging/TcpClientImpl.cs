@@ -1,8 +1,8 @@
-﻿using Networking.Messaging.ConnectionProcessors;
-using Networking.Messaging.MessageProcessors;
+﻿using Networking.Messaging.Helpers;
 using System;
+using System.IO;
+using System.Linq;
 using System.Net;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace Networking.Messaging
@@ -10,35 +10,61 @@ namespace Networking.Messaging
     public class TcpClientImpl : IDisposable
     {
         private TcpMessagePipe connection;
+        private IPEndPoint[] availableServers;
 
-        public TcpClientImpl()
+        private int currentServerIPEndPointIndex;
+        public IPEndPoint CurrentServerIPEndPoint
         {
+            get { return availableServers[currentServerIPEndPointIndex]; }
+        }
+
+        public TcpClientImpl(params IPEndPoint[] availableServers)
+        {
+            if (availableServers == null)
+                throw new ArgumentNullException(nameof(availableServers));
+            if (availableServers.Length == 0)
+                throw new ArgumentException("Should not be empty", nameof(availableServers));
+
+            this.currentServerIPEndPointIndex = 0;
             connection = new TcpMessagePipe();
-            connection.InvalidMessage += OnInvalidMessage;
             connection.MessageArrived += OnMessageArrived;
-            connection.ReadFailure += OnReadFailure;
             connection.WriteFailure += OnWriteFailure;
         }
 
-        private void OnWriteFailure(object sender, IMessage e)
+        private async void OnWriteFailure(object sender, IMessage e)
         {
-            ConnectAsync();
-            WriteMessageAsync(e);
+            await ReconnectAsync();
         }
 
-        private void OnReadFailure(object sender, EventArgs e)
+        private async Task ReconnectAsync()
         {
-            connection.ConnectAsync();
+            try
+            {
+                currentServerIPEndPointIndex++;
+                if (currentServerIPEndPointIndex != availableServers.Length)
+                    await ConnectAsync(CurrentServerIPEndPoint);
+            }
+            catch
+            {
+            }
         }
 
-        private void OnMessageArrived(object sender, IMessage e)
+        private async void OnMessageArrived(object sender, AsyncResultEventArgs<IMessage> e)
         {
-            Console.WriteLine("Message arrived");
-        }
+            if (e.Cancelled)
+            {
+                Console.WriteLine("Reading was cancelled");
+                return;
+            }
+            if (e.Error != null)
+            {
+                await connection.StopReadingAsync();
+                await ReconnectAsync();
+                StartReadingMessages();
+                return;
+            }
 
-        private void OnInvalidMessage(object sender, EventArgs e)
-        {
-            Dispose();
+            Console.WriteLine(e.Result);
         }
 
         public Task ConnectAsync(IPEndPoint endpoint)

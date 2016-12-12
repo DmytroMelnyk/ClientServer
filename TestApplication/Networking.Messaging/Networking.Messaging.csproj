@@ -40,12 +40,11 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Helpers\AsyncLock.cs" />
+    <Compile Include="Helpers\AsyncResultEventArgs.cs" />
     <Compile Include="Helpers\ConcurrentSet.cs" />
-    <Compile Include="ConnectionProcessors\IConnectionProcessor.cs" />
-    <Compile Include="MessageProcessors\IMessageProcessor.cs" />
-    <Compile Include="MessageProcessors\ClientMessageProcessor.cs" />
-    <Compile Include="MessageProcessors\ServerMessageProcessor.cs" />
     <Compile Include="Messages.cs" />
+    <Compile Include="PacketStream.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="TcpClientImpl.cs" />
     <Compile Include="TcpMessagePipe.cs" />
