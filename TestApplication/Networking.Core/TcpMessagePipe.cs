@@ -23,8 +23,11 @@ namespace Networking.Core
         public TcpMessagePipe(TcpClient connection)
         {
             this.connection = connection;
+            if (connection.Connected)
+                stream = new PacketStream(connection.GetStream());
+
             KeepAliveTimeout = TimeSpan.FromSeconds(5);
-            timer = new Timer(_ => CheckConnection(), null, KeepAliveTimeout.Milliseconds, Timeout.Infinite);
+            timer = new Timer(_ => CheckConnection(), null, (int)KeepAliveTimeout.TotalMilliseconds, Timeout.Infinite);
         }
 
         public TcpMessagePipe() :
@@ -45,7 +48,7 @@ namespace Networking.Core
             }
             finally
             {
-                timer.Change(KeepAliveTimeout.Milliseconds, Timeout.Infinite);
+                timer.Change((int)KeepAliveTimeout.TotalMilliseconds, Timeout.Infinite);
             }
         }
 
@@ -67,7 +70,7 @@ namespace Networking.Core
             {
                 timer.Change(Timeout.Infinite, Timeout.Infinite);
                 await stream.WritePacketAsync(message.ToPacket(), CancellationToken.None).ConfigureAwait(false);
-                timer.Change(KeepAliveTimeout.Milliseconds, Timeout.Infinite);
+                timer.Change((int)KeepAliveTimeout.TotalMilliseconds, Timeout.Infinite);
             }
             catch
             {

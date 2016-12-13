@@ -44,12 +44,15 @@ namespace Networking.Server
             Console.WriteLine("New connection was added");
         }
 
-        private void OnWriteFailure(object sender, IMessage e)
+        private async void OnWriteFailure(object sender, IMessage e)
         {
-            Dispose((TcpMessagePipe)sender);
+            var connection = (TcpMessagePipe)sender;
+            await connection.StopReadingAsync().ConfigureAwait(false);
+            Console.WriteLine("Client was disconnected");
+            Dispose(connection);
         }
 
-        private void OnMessageArrived(object sender, AsyncResultEventArgs<IMessage> e)
+        private async void OnMessageArrived(object sender, AsyncResultEventArgs<IMessage> e)
         {
             if (e.Cancelled)
             {
@@ -59,18 +62,26 @@ namespace Networking.Server
 
             if (e.Error != null)
             {
-                Dispose((TcpMessagePipe)sender);
+                var connection = (TcpMessagePipe) sender;
+                await connection.StopReadingAsync().ConfigureAwait(false);
+                Console.WriteLine("Client was disconnected");
+                Dispose(connection);
                 return;
             }
 
-            Console.WriteLine("Message arrived");
-            foreach (var connection in connections)
-                Task.Factory.StartNew(state => connection.WriteMessageAsync((IMessage)state), e, CancellationToken.None, TaskCreationOptions.DenyChildAttach, TaskScheduler.Default);
-        }
+            Console.WriteLine($"{DateTime.Now}: Message arrived");
+            //if (e.Result is KeepAliveMessage)
+            //    return;
 
-        private void OnInvalidMessage(object sender, EventArgs e)
-        {
-            Dispose((TcpMessagePipe)sender);
+            foreach (var connection in connections)
+            {
+                Task.Factory.StartNew(
+                    state => connection.WriteMessageAsync((IMessage)state), 
+                    e.Result, 
+                    CancellationToken.None, 
+                    TaskCreationOptions.DenyChildAttach, 
+                    TaskScheduler.Default).Unwrap();
+            }
         }
 
         private void Dispose(TcpMessagePipe connection)

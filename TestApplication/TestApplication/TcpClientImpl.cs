@@ -24,7 +24,7 @@ namespace Networking.Client
                 throw new ArgumentException("Should not be empty", nameof(availableServers));
 
             this.availableServers = availableServers;
-            currentServerIPEndPointIndex = 0;
+            currentServerIPEndPointIndex = -1;
             connection = new TcpMessagePipe();
             connection.MessageArrived += OnMessageArrived;
             connection.WriteFailure += OnWriteFailure;
@@ -32,18 +32,20 @@ namespace Networking.Client
 
         private async void OnWriteFailure(object sender, IMessage e)
         {
-            await ReconnectAsync().ConfigureAwait(false);
+            await ConnectAsync().ConfigureAwait(false);
         }
 
-        private async Task ReconnectAsync()
+        public async Task ConnectAsync()
         {
             try
             {
                 currentServerIPEndPointIndex++;
-                if (currentServerIPEndPointIndex != availableServers.Length)
-                    await ConnectAsync(CurrentServerIPEndPoint).ConfigureAwait(false);
+                if (currentServerIPEndPointIndex >= availableServers.Length)
+                    throw new ApplicationException("There is no accessible IPEndPoints.");
+                await ConnectAsync(CurrentServerIPEndPoint).ConfigureAwait(false);
             }
-            catch
+            catch (Exception ex) 
+                when (ex.GetType() != typeof(ApplicationException))
             {
             }
         }
@@ -58,7 +60,7 @@ namespace Networking.Client
             if (e.Error != null)
             {
                 await connection.StopReadingAsync().ConfigureAwait(false);
-                await ReconnectAsync().ConfigureAwait(false);
+                await ConnectAsync().ConfigureAwait(false);
                 StartReadingMessagesAsync();
                 return;
             }
@@ -66,7 +68,7 @@ namespace Networking.Client
             Console.WriteLine(e.Result);
         }
 
-        public Task ConnectAsync(IPEndPoint endpoint)
+        private Task ConnectAsync(IPEndPoint endpoint)
         {
             return connection.ConnectAsync(endpoint);
         }

@@ -7,7 +7,7 @@ namespace Networking.Server
     {
         static void Main(string[] args)
         {
-            new TcpServerImpl(new IPEndPoint(IPAddress.Parse("127.0.0.1"), 50001)).StartListening();
+            new TcpServerImpl(new IPEndPoint(IPAddress.Parse("127.0.0.1"), 50000)).StartListening();
         }
     }
 }
