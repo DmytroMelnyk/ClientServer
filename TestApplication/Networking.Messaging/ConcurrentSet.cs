@@ -1,8 +1,8 @@
-﻿using System.Collections.Concurrent;
+﻿using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Collections;
 
-namespace Networking.Messaging.Helpers
+namespace Networking.Server
 {
     internal class ConcurrentSet<T> : IEnumerable<T>
     {

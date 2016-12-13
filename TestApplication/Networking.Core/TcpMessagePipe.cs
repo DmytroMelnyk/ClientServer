@@ -1,24 +1,22 @@
-﻿using Networking.Core;
-using Networking.Messaging.Helpers;
-using System;
+﻿using System;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Networking.Messaging
+namespace Networking.Core
 {
     public sealed class TcpMessagePipe : IDisposable
     {
         private Timer timer;
         private TcpClient connection;
         private PacketStream stream;
-        public event EventHandler<IMessage> WriteFailure;
-        public event EventHandler<AsyncResultEventArgs<IMessage>> MessageArrived;
         private CancellationTokenSource cancelReading;
         private TaskCompletionSource<object> readingCancellation;
+
+        public event EventHandler<IMessage> WriteFailure;
+        public event EventHandler<AsyncResultEventArgs<IMessage>> MessageArrived;
 
         public bool IsReading { get; private set; }
 
@@ -77,7 +75,7 @@ namespace Networking.Messaging
             }
         }
 
-        public async void StartReadingMessages()
+        public async void StartReadingMessagesAsync()
         {
             if (IsReading)
                 throw new InvalidOperationException("Message pipe is already reading messages");

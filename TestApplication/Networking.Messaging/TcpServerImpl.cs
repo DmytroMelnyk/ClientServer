@@ -1,43 +1,47 @@
-﻿using Networking.Core;
-using Networking.Messaging.Helpers;
-using System;
+﻿using System;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using Networking.Core;
 
-namespace Networking.Messaging
+namespace Networking.Server
 {
     public class TcpServerImpl : IDisposable
     {
-        private TcpConnectionListener listener;
+        private TcpListener listener;
         private ConcurrentSet<TcpMessagePipe> connections = new ConcurrentSet<TcpMessagePipe>();
 
         public TcpServerImpl(IPEndPoint endpoint)
         {
-            listener = new TcpConnectionListener(endpoint);
+            listener = new TcpListener(endpoint);
         }
 
-        public async void StartListening()
+        public void StartListening()
         {
             listener.Start();
             while (true)
             {
                 try
                 {
-                    var tcpConnection = await listener.AcceptTcpConnectionAsync();
-                    var newConnection = new TcpMessagePipe(tcpConnection);
-                    newConnection.InvalidMessage += OnInvalidMessage;
-                    newConnection.MessageArrived += OnMessageArrived;
-                    newConnection.ReadFailure += OnReadFailure;
-                    newConnection.WriteFailure += OnWriteFailure;
-                    newConnection.StartReadingMessages();
-                    connections.TryAdd(newConnection);
+                    var tcpClient = listener.AcceptTcpClient();
+                    var connection = new TcpMessagePipe(tcpClient);
+                    ConnectionAccepted(connection);
                 }
-                catch
+                catch (Exception ex)
                 {
-
+                    Console.WriteLine(ex.Message);
                 }
             }
+        }
+
+        private void ConnectionAccepted(TcpMessagePipe newConnection)
+        {
+            newConnection.MessageArrived += OnMessageArrived;
+            newConnection.WriteFailure += OnWriteFailure;
+            newConnection.StartReadingMessagesAsync();
+            connections.TryAdd(newConnection);
+            Console.WriteLine("New connection was added");
         }
 
         private void OnWriteFailure(object sender, IMessage e)
@@ -45,15 +49,19 @@ namespace Networking.Messaging
             Dispose((TcpMessagePipe)sender);
         }
 
-        private void OnReadFailure(object sender, EventArgs e)
+        private void OnMessageArrived(object sender, AsyncResultEventArgs<IMessage> e)
         {
-            Dispose((TcpMessagePipe)sender);
-        }
-
-        private void OnMessageArrived(object sender, IMessage e)
-        {
-            if (e.GetType() == typeof(KeepAliveMessage))
+            if (e.Cancelled)
+            {
+                Console.WriteLine("Reading was cancelled");
                 return;
+            }
+
+            if (e.Error != null)
+            {
+                Dispose((TcpMessagePipe)sender);
+                return;
+            }
 
             Console.WriteLine("Message arrived");
             foreach (var connection in connections)
@@ -68,9 +76,7 @@ namespace Networking.Messaging
         private void Dispose(TcpMessagePipe connection)
         {
             connections.TryRemove(connection);
-            connection.InvalidMessage -= OnInvalidMessage;
             connection.MessageArrived -= OnMessageArrived;
-            connection.ReadFailure -= OnReadFailure;
             connection.WriteFailure -= OnWriteFailure;
             connection.Dispose();
         }
@@ -80,7 +86,7 @@ namespace Networking.Messaging
             foreach (var connection in connections)
                 connection.Dispose();
 
-            listener.Dispose();
+            listener.Stop();
         }
     }
 }

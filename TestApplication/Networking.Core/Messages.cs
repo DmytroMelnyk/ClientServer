@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Networking.Messaging
+namespace Networking.Core
 {
     public interface IMessage
     {
