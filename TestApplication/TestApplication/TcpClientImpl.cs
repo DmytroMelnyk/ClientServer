@@ -2,6 +2,7 @@
 using System.Net;
 using System.Threading.Tasks;
 using Networking.Core;
+using System.ComponentModel;
 
 namespace Networking.Client
 {
@@ -27,10 +28,10 @@ namespace Networking.Client
             currentServerIPEndPointIndex = -1;
             connection = new TcpMessagePipe();
             connection.MessageArrived += OnMessageArrived;
-            connection.WriteFailure += OnWriteFailure;
+            connection.ConnectionFailure += OnConnectionFailure;
         }
 
-        private async void OnWriteFailure(object sender, IMessage e)
+        private async void OnConnectionFailure(object sender, AsyncCompletedEventArgs e)
         {
             await ConnectAsync().ConfigureAwait(false);
         }

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.ComponentModel;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -15,48 +16,54 @@ namespace Networking.Core
         private CancellationTokenSource cancelReading;
         private TaskCompletionSource<object> readingCancellation;
 
-        public event EventHandler<IMessage> WriteFailure;
+        public event EventHandler<AsyncCompletedEventArgs> ConnectionFailure;
         public event EventHandler<AsyncResultEventArgs<IMessage>> MessageArrived;
 
         public bool IsReading { get; private set; }
 
         public TcpMessagePipe(TcpClient connection)
         {
-            this.connection = connection;
-            if (connection.Connected)
-                stream = new PacketStream(connection.GetStream());
+            if (connection == null)
+                throw new ArgumentNullException(nameof(connection));
 
+            if (!connection.Connected)
+                throw new ArgumentException("TcpClient should be already connected.", nameof(connection));
+
+            this.connection = connection;
+            stream = new PacketStream(connection.GetStream());
+            timer = new Timer(_ => CheckConnectionAsync(), null, (int)KeepAliveTimeout.TotalMilliseconds, Timeout.Infinite);
             KeepAliveTimeout = TimeSpan.FromSeconds(5);
-            timer = new Timer(_ => CheckConnection(), null, (int)KeepAliveTimeout.TotalMilliseconds, Timeout.Infinite);
         }
 
-        public TcpMessagePipe() :
-            this(new TcpClient())
+        public TcpMessagePipe()
         {
-            timer.Change(Timeout.Infinite, Timeout.Infinite);
+            this.connection = new TcpClient();
+            timer = new Timer(_ => CheckConnectionAsync(), null, Timeout.Infinite, Timeout.Infinite);
+            KeepAliveTimeout = TimeSpan.FromSeconds(5);
         }
 
         public async Task ConnectAsync(IPEndPoint endpoint)
         {
-            try
-            {
-                if (endpoint == null)
-                    throw new ArgumentNullException(nameof(endpoint));
+            if (endpoint == null)
+                throw new ArgumentNullException(nameof(endpoint));
 
-                await connection.ConnectAsync(endpoint.Address, endpoint.Port).ConfigureAwait(false);
-                stream = new PacketStream(connection.GetStream());
-            }
-            finally
-            {
-                timer.Change((int)KeepAliveTimeout.TotalMilliseconds, Timeout.Infinite);
-            }
+            await connection.ConnectAsync(endpoint.Address, endpoint.Port).ConfigureAwait(false);
+            stream = new PacketStream(connection.GetStream());
+            timer.Change((int)KeepAliveTimeout.TotalMilliseconds, Timeout.Infinite);
         }
 
         public TimeSpan KeepAliveTimeout { get; set; }
 
-        private Task CheckConnection()
+        private async void CheckConnectionAsync()
         {
-            return WriteMessageAsyncInternal(KeepAliveMessage.Instance);
+            try
+            {
+                await WriteMessageAsyncInternal(KeepAliveMessage.Instance).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                ConnectionFailure?.Invoke(this, new AsyncCompletedEventArgs(ex, false, null));
+            }
         }
 
         public Task WriteMessageAsync(IMessage message)
@@ -66,19 +73,12 @@ namespace Networking.Core
 
         private async Task WriteMessageAsyncInternal(IMessage message)
         {
-            try
-            {
-                timer.Change(Timeout.Infinite, Timeout.Infinite);
-                await stream.WritePacketAsync(message.ToPacket(), CancellationToken.None).ConfigureAwait(false);
-                timer.Change((int)KeepAliveTimeout.TotalMilliseconds, Timeout.Infinite);
-            }
-            catch
-            {
-                WriteFailure?.Invoke(this, message);
-            }
+            timer.Change(Timeout.Infinite, Timeout.Infinite);
+            await stream.WritePacketAsync(message.ToPacket(), CancellationToken.None).ConfigureAwait(false);
+            timer.Change((int)KeepAliveTimeout.TotalMilliseconds, Timeout.Infinite);
         }
 
-        public async void StartReadingMessagesAsync()
+        public async Task StartReadingMessagesAsync()
         {
             if (IsReading)
                 throw new InvalidOperationException("Message pipe is already reading messages");

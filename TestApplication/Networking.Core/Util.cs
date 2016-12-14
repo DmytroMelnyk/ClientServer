@@ -1,12 +1,16 @@
-﻿using System.IO;
+﻿using System;
+using System.IO;
 using System.Runtime.Serialization.Formatters.Binary;
 
 namespace Networking.Core
 {
-    public static class Util
+    internal static class Util
     {
         public static byte[] ToPacket(this IMessage message)
         {
+            if (message == null)
+                throw new ArgumentNullException(nameof(message));
+
             if (message.GetType() == typeof(KeepAliveMessage))
                 return new byte[0];
 
@@ -19,6 +23,9 @@ namespace Networking.Core
 
         public static IMessage ToMessage(this byte[] binaryMessage)
         {
+            if (binaryMessage == null)
+                return null;
+
             if (binaryMessage.Length == 0)
                 return new KeepAliveMessage();
 

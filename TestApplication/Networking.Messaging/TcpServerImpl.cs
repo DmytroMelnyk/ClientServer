@@ -38,7 +38,7 @@ namespace Networking.Server
         private void ConnectionAccepted(TcpMessagePipe newConnection)
         {
             newConnection.MessageArrived += OnMessageArrived;
-            newConnection.WriteFailure += OnWriteFailure;
+            newConnection.ConnectionFailure += OnWriteFailure;
             newConnection.StartReadingMessagesAsync();
             connections.TryAdd(newConnection);
             Console.WriteLine("New connection was added");
@@ -88,7 +88,7 @@ namespace Networking.Server
         {
             connections.TryRemove(connection);
             connection.MessageArrived -= OnMessageArrived;
-            connection.WriteFailure -= OnWriteFailure;
+            connection.ConnectionFailure -= OnWriteFailure;
             connection.Dispose();
         }
 
