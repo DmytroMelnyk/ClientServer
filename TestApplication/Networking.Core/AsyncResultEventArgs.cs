@@ -1,29 +1,32 @@
 ﻿using System;
 using System.ComponentModel;
+using System.Threading.Tasks;
 
 namespace Networking.Core
 {
-    public class AsyncResultEventArgs<T> : AsyncCompletedEventArgs
+    public class DefferedAsyncResultEventArgs<T> : AsyncCompletedEventArgs
     {
+        private readonly DeferralManager _deferrals = new DeferralManager();
+
         T result;
 
-        private AsyncResultEventArgs(T result_, Exception error, bool cancelled, object userState)
+        private DefferedAsyncResultEventArgs(T result, Exception error, bool cancelled, object userState)
             : base(error, cancelled, userState)
         {
-            result = result_;
+            this.result = result;
         }
 
-        public AsyncResultEventArgs(bool cancelled)
+        public DefferedAsyncResultEventArgs(bool cancelled)
             : this(default(T), null, cancelled, null)
         {
         }
 
-        public AsyncResultEventArgs(T result_)
-            : this(result_, null, false, null)
+        public DefferedAsyncResultEventArgs(T result)
+            : this(result, null, false, null)
         {
         }
 
-        public AsyncResultEventArgs(Exception error)
+        public DefferedAsyncResultEventArgs(Exception error)
             : this(default(T), error, false, null)
         {
         }
@@ -35,6 +38,15 @@ namespace Networking.Core
                 RaiseExceptionIfNecessary();
                 return result;
             }
+        }
+
+        public IDisposable GetDeferral()
+        {
+            return _deferrals.GetDeferral();
+        }
+        internal Task WaitForDeferralsAsync()
+        {
+            return _deferrals.SignalAndWaitAsync();
         }
     }
 }

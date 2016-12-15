@@ -40,8 +40,12 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AsyncCountdownEvent.cs" />
     <Compile Include="AsyncLock.cs" />
+    <Compile Include="AsyncManualResetEvent.cs" />
     <Compile Include="AsyncResultEventArgs.cs" />
+    <Compile Include="DeferralManager.cs" />
+    <Compile Include="DefferedAsyncCompletedEventArgs.cs" />
     <Compile Include="Messages.cs" />
     <Compile Include="PacketStream.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

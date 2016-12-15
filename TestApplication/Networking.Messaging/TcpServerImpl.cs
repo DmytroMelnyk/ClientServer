@@ -44,15 +44,15 @@ namespace Networking.Server
             Console.WriteLine("New connection was added");
         }
 
-        private async void OnWriteFailure(object sender, IMessage e)
+        private void OnWriteFailure(object sender, DefferedAsyncCompletedEventArgs e)
         {
             var connection = (TcpMessagePipe)sender;
-            await connection.StopReadingAsync().ConfigureAwait(false);
+            connection.StopReading();
             Console.WriteLine("Client was disconnected");
             Dispose(connection);
         }
 
-        private async void OnMessageArrived(object sender, AsyncResultEventArgs<IMessage> e)
+        private void OnMessageArrived(object sender, DefferedAsyncResultEventArgs<IMessage> e)
         {
             if (e.Cancelled)
             {
@@ -62,8 +62,8 @@ namespace Networking.Server
 
             if (e.Error != null)
             {
-                var connection = (TcpMessagePipe) sender;
-                await connection.StopReadingAsync().ConfigureAwait(false);
+                var connection = (TcpMessagePipe)sender;
+                connection.StopReading();
                 Console.WriteLine("Client was disconnected");
                 Dispose(connection);
                 return;
@@ -76,10 +76,10 @@ namespace Networking.Server
             foreach (var connection in connections)
             {
                 Task.Factory.StartNew(
-                    state => connection.WriteMessageAsync((IMessage)state), 
-                    e.Result, 
-                    CancellationToken.None, 
-                    TaskCreationOptions.DenyChildAttach, 
+                    state => connection.WriteMessageAsync((IMessage)state),
+                    e.Result,
+                    CancellationToken.None,
+                    TaskCreationOptions.DenyChildAttach,
                     TaskScheduler.Default).Unwrap();
             }
         }

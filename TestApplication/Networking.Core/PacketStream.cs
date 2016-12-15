@@ -40,7 +40,7 @@ namespace Networking.Core
             var buffer = new byte[bytesCount];
             for (int totalBytesReceived = 0; totalBytesReceived < bytesCount;)
             {
-                int bytesReceived = await this.Stream.ReadAsync(buffer, totalBytesReceived, bytesCount - totalBytesReceived, ct).ConfigureAwait(false);
+                int bytesReceived = await Stream.ReadAsync(buffer, totalBytesReceived, bytesCount - totalBytesReceived, ct).ConfigureAwait(false);
                 if (bytesReceived == 0)
                     return null;
 

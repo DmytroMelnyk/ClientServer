@@ -31,9 +31,12 @@ namespace Networking.Client
             connection.ConnectionFailure += OnConnectionFailure;
         }
 
-        private async void OnConnectionFailure(object sender, AsyncCompletedEventArgs e)
+        private async void OnConnectionFailure(object sender, DefferedAsyncCompletedEventArgs e)
         {
-            await ConnectAsync().ConfigureAwait(false);
+            using (e.GetDeferral())
+            {
+                await ConnectAsync().ConfigureAwait(false);
+            }
         }
 
         public async Task ConnectAsync()
@@ -51,22 +54,25 @@ namespace Networking.Client
             }
         }
 
-        private async void OnMessageArrived(object sender, AsyncResultEventArgs<IMessage> e)
+        private async void OnMessageArrived(object sender, DefferedAsyncResultEventArgs<IMessage> e)
         {
-            if (e.Cancelled)
+            using (e.GetDeferral())
             {
-                Console.WriteLine("Reading was cancelled");
-                return;
-            }
-            if (e.Error != null)
-            {
-                await connection.StopReadingAsync().ConfigureAwait(false);
-                await ConnectAsync().ConfigureAwait(false);
-                StartReadingMessagesAsync();
-                return;
-            }
+                if (e.Cancelled)
+                {
+                    Console.WriteLine("Reading was cancelled");
+                    return;
+                }
+                if (e.Error != null)
+                {
+                    connection.StopReading();
+                    await ConnectAsync().ConfigureAwait(false);
+                    StartReadingMessagesAsync();
+                    return;
+                }
 
-            Console.WriteLine(e.Result);
+                Console.WriteLine(e.Result);
+            }
         }
 
         private Task ConnectAsync(IPEndPoint endpoint)

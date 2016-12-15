@@ -16,8 +16,8 @@ namespace Networking.Core
         private CancellationTokenSource cancelReading;
         private TaskCompletionSource<object> readingCancellation;
 
-        public event EventHandler<AsyncCompletedEventArgs> ConnectionFailure;
-        public event EventHandler<AsyncResultEventArgs<IMessage>> MessageArrived;
+        public event EventHandler<DefferedAsyncCompletedEventArgs> ConnectionFailure;
+        public event EventHandler<DefferedAsyncResultEventArgs<IMessage>> MessageArrived;
 
         public bool IsReading { get; private set; }
 
@@ -62,8 +62,28 @@ namespace Networking.Core
             }
             catch (Exception ex)
             {
-                ConnectionFailure?.Invoke(this, new AsyncCompletedEventArgs(ex, false, null));
+                await RaiseConnectionFailureAsync(new DefferedAsyncCompletedEventArgs(ex, false, null)).ConfigureAwait(false);
             }
+        }
+
+        private Task RaiseMessageArrivedAsync(DefferedAsyncResultEventArgs<IMessage> args)
+        {
+            var handler = MessageArrived;
+            if (handler == null)
+                return Task.FromResult(0);
+
+            handler(this, args);
+            return args.WaitForDeferralsAsync();
+        }
+
+        private Task RaiseConnectionFailureAsync(DefferedAsyncCompletedEventArgs args)
+        {
+            var handler = ConnectionFailure;
+            if (handler == null)
+                return Task.FromResult(0);
+
+            handler(this, args);
+            return args.WaitForDeferralsAsync();
         }
 
         public Task WriteMessageAsync(IMessage message)
@@ -85,35 +105,32 @@ namespace Networking.Core
 
             IsReading = true;
             cancelReading = new CancellationTokenSource();
-            readingCancellation = new TaskCompletionSource<object>();
             while (!cancelReading.IsCancellationRequested)
             {
                 try
                 {
                     var packet = await stream.ReadPacketAsync(cancelReading.Token).ConfigureAwait(false);
                     var message = packet.ToMessage();
-                    MessageArrived?.Invoke(this, new AsyncResultEventArgs<IMessage>(message));
+                    await RaiseMessageArrivedAsync(new DefferedAsyncResultEventArgs<IMessage>(message)).ConfigureAwait(false);
                 }
                 catch (InvalidCastException)
                 {
-                    MessageArrived?.Invoke(this, new AsyncResultEventArgs<IMessage>(new InvalidDataException("Unknown type of message received")));
+                    await RaiseMessageArrivedAsync(new DefferedAsyncResultEventArgs<IMessage>(new InvalidDataException("Unknown type of message received"))).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
-                    MessageArrived?.Invoke(this, new AsyncResultEventArgs<IMessage>(ex));
+                    await RaiseMessageArrivedAsync(new DefferedAsyncResultEventArgs<IMessage>(ex)).ConfigureAwait(false);
                 }
             }
             IsReading = false;
-            readingCancellation.SetResult(null);
         }
 
-        public async Task StopReadingAsync()
+        public void StopReading()
         {
             if (!IsReading)
                 throw new InvalidOperationException("Message pipe is not running");
 
             cancelReading.Cancel();
-            await readingCancellation.Task;
         }
 
         public void Dispose()
