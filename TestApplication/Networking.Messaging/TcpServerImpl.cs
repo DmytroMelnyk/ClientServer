@@ -46,41 +46,47 @@ namespace Networking.Server
 
         private void OnWriteFailure(object sender, DefferedAsyncCompletedEventArgs e)
         {
-            var connection = (TcpMessagePipe)sender;
-            connection.StopReading();
-            Console.WriteLine("Client was disconnected");
-            Dispose(connection);
-        }
-
-        private void OnMessageArrived(object sender, DefferedAsyncResultEventArgs<IMessage> e)
-        {
-            if (e.Cancelled)
-            {
-                Console.WriteLine("Reading was cancelled");
-                return;
-            }
-
-            if (e.Error != null)
+            using (e.GetDeferral())
             {
                 var connection = (TcpMessagePipe)sender;
                 connection.StopReading();
                 Console.WriteLine("Client was disconnected");
                 Dispose(connection);
-                return;
             }
+        }
 
-            Console.WriteLine($"{DateTime.Now}: Message arrived");
-            //if (e.Result is KeepAliveMessage)
-            //    return;
-
-            foreach (var connection in connections)
+        private void OnMessageArrived(object sender, DefferedAsyncResultEventArgs<IMessage> e)
+        {
+            using (e.GetDeferral())
             {
-                Task.Factory.StartNew(
-                    state => connection.WriteMessageAsync((IMessage)state),
-                    e.Result,
-                    CancellationToken.None,
-                    TaskCreationOptions.DenyChildAttach,
-                    TaskScheduler.Default).Unwrap();
+                if (e.Cancelled)
+                {
+                    Console.WriteLine("Reading was cancelled");
+                    return;
+                }
+
+                if (e.Error != null)
+                {
+                    var connection = (TcpMessagePipe)sender;
+                    connection.StopReading();
+                    Console.WriteLine("Client was disconnected");
+                    Dispose(connection);
+                    return;
+                }
+
+                Console.WriteLine($"{DateTime.Now}: Message arrived");
+                //if (e.Result is KeepAliveMessage)
+                //    return;
+
+                foreach (var connection in connections)
+                {
+                    Task.Factory.StartNew(
+                        state => connection.WriteMessageAsync((IMessage)state),
+                        e.Result,
+                        CancellationToken.None,
+                        TaskCreationOptions.DenyChildAttach,
+                        TaskScheduler.Default).Unwrap();
+                }
             }
         }
 

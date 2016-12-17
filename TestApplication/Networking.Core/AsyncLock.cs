@@ -1,39 +1,39 @@
-﻿using System;
-using System.Threading;
-using System.Threading.Tasks;
-
-namespace Networking.Core
+﻿namespace Networking.Core
 {
+    using System;
+    using System.Threading;
+    using System.Threading.Tasks;
+
     public sealed class AsyncLock
     {
-        private readonly SemaphoreSlim m_semaphore = new SemaphoreSlim(1, 1);
-        private readonly Task<IDisposable> m_releaser;
+        private readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
+        private readonly Task<IDisposable> _releaser;
 
         public AsyncLock()
         {
-            m_releaser = Task.FromResult<IDisposable>(new Releaser(this));
+            _releaser = Task.FromResult<IDisposable>(new Releaser(this));
         }
 
         public Task<IDisposable> LockAsync()
         {
-            var wait = m_semaphore.WaitAsync();
+            var wait = _semaphore.WaitAsync();
 
-            return wait.IsCompleted ? m_releaser :
-                wait.ContinueWith((_, state) => (IDisposable)state, m_releaser.Result, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            return wait.IsCompleted ? _releaser :
+                wait.ContinueWith((_, state) => (IDisposable)state, _releaser.Result, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         }
 
         private sealed class Releaser : IDisposable
         {
-            private readonly AsyncLock m_toRelease;
+            private readonly AsyncLock _toRelease;
 
             internal Releaser(AsyncLock toRelease)
             {
-                m_toRelease = toRelease;
+                _toRelease = toRelease;
             }
 
             public void Dispose()
             {
-                m_toRelease.m_semaphore.Release();
+                _toRelease._semaphore.Release();
             }
         }
     }
