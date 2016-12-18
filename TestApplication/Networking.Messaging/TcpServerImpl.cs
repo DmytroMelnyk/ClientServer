@@ -10,20 +10,31 @@
 
     public class TcpServerImpl : IDisposable
     {
-        private TcpListener listener;
-        private IConnectionsBehavior _behavior;
+        private readonly TcpListener _listener;
+        private readonly IConnectionsBehavior _behavior;
 
         public TcpServerImpl(IPEndPoint endpoint, IConnectionsBehavior behavior)
         {
-            listener = new TcpListener(endpoint);
+            if (endpoint == null)
+            {
+                throw new ArgumentNullException(nameof(endpoint));
+            }
+
+            if (behavior == null)
+            {
+                throw new ArgumentNullException(nameof(behavior));
+            }
+
+            _listener = new TcpListener(endpoint);
+            _behavior = behavior;
         }
 
         public void StartListening()
         {
-            listener.Start();
+            _listener.Start();
             while (true)
             {
-                var tcpClient = listener.AcceptTcpClient();
+                var tcpClient = _listener.AcceptTcpClient();
                 var connection = new SustainableMessageStream(tcpClient.GetStream());
                 connection.MessageArrived += OnMessageArrived;
                 connection.ConnectionFailure += OnWriteFailure;
@@ -35,7 +46,7 @@
         public void Dispose()
         {
             _behavior.Dispose();
-            listener.Stop();
+            _listener.Stop();
         }
 
         private void OnWriteFailure(object sender, DeferredAsyncCompletedEventArgs e)

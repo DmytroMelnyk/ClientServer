@@ -58,7 +58,10 @@
                         // if read was followed by InvalidDataException we should reset timer too.
                         var packet = await PacketStream.ReadPacketAsync(CancellationToken.None).ConfigureAwait(false);
                         _timer.Change((int)KeepAliveTimeout.TotalMilliseconds, Timeout.Infinite);
-                        await PacketArrived.RaiseAsync(this, new DeferredAsyncResultEventArgs<byte[]>(packet)).ConfigureAwait(false);
+                        if (packet != Util.ZeroLengthPacket)
+                        {
+                            await PacketArrived.RaiseAsync(this, new DeferredAsyncResultEventArgs<byte[]>(packet)).ConfigureAwait(false);
+                        }
                     }
                     catch (InvalidDataException ex)
                     {

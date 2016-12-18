@@ -14,8 +14,10 @@
 
         public void OnConnectionFailure(SustainableMessageStream connection)
         {
-            connections.TryRemove(connection);
-            Console.WriteLine("Client was disconnected");
+            if (connections.TryRemove(connection))
+            {
+                Console.WriteLine("Client was disconnected");
+            }
         }
 
         public void OnException(SustainableMessageStream connection, Exception error)
@@ -43,8 +45,10 @@
 
         public void OnNewConnectionArrived(SustainableMessageStream connection)
         {
-            connections.TryAdd(connection);
-            Console.WriteLine("New connection was added");
+            if (connections.TryAdd(connection))
+            {
+                Console.WriteLine("New connection was added");
+            }
         }
 
         public void Dispose()
