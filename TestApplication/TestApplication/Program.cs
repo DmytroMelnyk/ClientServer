@@ -7,7 +7,6 @@
     using System.Threading.Tasks;
     using CommandLine;
     using ConnectionBehavior;
-    using Core.Messages;
 
     public class Program
     {
@@ -48,14 +47,9 @@
             while (true)
             {
                 Console.WriteLine("Enter a message");
-                var textMessage = ToTextMessage(Console.ReadLine());
+                var textMessage = Console.ReadLine();
                 await client.WriteMessageAsync(textMessage).ConfigureAwait(false);
             }
-        }
-
-        private static IMessage ToTextMessage(string textMessage)
-        {
-            return new StringMessage { Message = textMessage };
         }
     }
 }

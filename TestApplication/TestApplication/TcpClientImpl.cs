@@ -6,7 +6,6 @@
     using System.Threading.Tasks;
     using ConnectionBehavior;
     using Core.AsyncEvents;
-    using Core.Messages;
     using Core.Streams;
 
     public class TcpClientImpl : IDisposable
@@ -40,7 +39,7 @@
             Dispose();
         }
 
-        public Task WriteMessageAsync(IMessage message)
+        public Task WriteMessageAsync(object message)
         {
             return _connection.WriteMessageAsync(message);
         }
@@ -50,7 +49,7 @@
             _connection.Dispose();
         }
 
-        private void OnMessageArrived(object sender, DeferredAsyncResultEventArgs<IMessage> e)
+        private void OnMessageArrived(object sender, DeferredAsyncResultEventArgs<object> e)
         {
             using (e.GetDeferral())
             {

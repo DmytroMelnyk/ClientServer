@@ -1,11 +1,11 @@
 ﻿namespace Networking.Server
 {
     using System;
+    using System.IO;
     using System.Net;
     using System.Net.Sockets;
     using ConnectionBehavior;
     using Core.AsyncEvents;
-    using Core.Messages;
     using Core.Streams;
 
     public class TcpServerImpl : IDisposable
@@ -37,7 +37,7 @@
                 var tcpClient = _listener.AcceptTcpClient();
                 var connection = new SustainableMessageStream(tcpClient.GetStream());
                 connection.MessageArrived += OnMessageArrived;
-                connection.ConnectionFailure += OnWriteFailure;
+                connection.ConnectionFailure += OnConnectionFailure;
                 connection.StartReadingMessages();
                 _behavior.OnNewConnectionArrived(connection);
             }
@@ -49,30 +49,44 @@
             _listener.Stop();
         }
 
-        private void OnWriteFailure(object sender, DeferredAsyncCompletedEventArgs e)
+        private void OnConnectionFailure(object sender, DeferredAsyncCompletedEventArgs e)
         {
             using (e.GetDeferral())
             {
                 var connection = (SustainableMessageStream)sender;
-                connection.MessageArrived -= OnMessageArrived;
-                connection.ConnectionFailure -= OnWriteFailure;
-                connection.Dispose();
+                Dispose(connection);
                 _behavior.OnConnectionFailure(connection);
             }
         }
 
-        private void OnMessageArrived(object sender, DeferredAsyncResultEventArgs<IMessage> e)
+        private void OnMessageArrived(object sender, DeferredAsyncResultEventArgs<object> e)
         {
             using (e.GetDeferral())
             {
+                var connection = (SustainableMessageStream)sender;
+
                 if (e.Error != null)
                 {
-                    _behavior.OnException((SustainableMessageStream)sender, e.Error);
+                    if (e.Error is InvalidDataException)
+                    {
+                        _behavior.OnException(connection, e.Error);
+                        return;
+                    }
+
+                    Dispose(connection);
+                    _behavior.OnConnectionFailure(connection);
                     return;
                 }
 
                 _behavior.OnMessage((SustainableMessageStream)sender, e.Result);
             }
+        }
+
+        private void Dispose(SustainableMessageStream connection)
+        {
+            connection.MessageArrived -= OnMessageArrived;
+            connection.ConnectionFailure -= OnConnectionFailure;
+            connection.Dispose();
         }
     }
 }

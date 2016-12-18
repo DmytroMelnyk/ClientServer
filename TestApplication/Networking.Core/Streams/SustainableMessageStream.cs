@@ -5,7 +5,6 @@
     using System.Threading;
     using System.Threading.Tasks;
     using AsyncEvents;
-    using Messages;
     using Utils;
 
     public sealed class SustainableMessageStream : IDisposable
@@ -38,14 +37,14 @@
 
         public event EventHandler<DeferredAsyncCompletedEventArgs> ConnectionFailure;
 
-        public event EventHandler<DeferredAsyncResultEventArgs<IMessage>> MessageArrived;
+        public event EventHandler<DeferredAsyncResultEventArgs<object>> MessageArrived;
 
         public void StartReadingMessages()
         {
             _stream.StartReadingLoopAsync();
         }
 
-        public Task WriteMessageAsync(IMessage message)
+        public Task WriteMessageAsync(object message)
         {
             if (message == null)
             {
@@ -66,26 +65,26 @@
             {
                 if (e.Error != null)
                 {
-                    await MessageArrived.RaiseAsync(this, new DeferredAsyncResultEventArgs<IMessage>(e.Error)).ConfigureAwait(false);
+                    await MessageArrived.RaiseAsync(this, new DeferredAsyncResultEventArgs<object>(e.Error)).ConfigureAwait(false);
                     return;
                 }
                 else if (e.Cancelled)
                 {
-                    await MessageArrived.RaiseAsync(this, new DeferredAsyncResultEventArgs<IMessage>(e.Cancelled)).ConfigureAwait(false);
+                    await MessageArrived.RaiseAsync(this, new DeferredAsyncResultEventArgs<object>(e.Cancelled)).ConfigureAwait(false);
                     return;
                 }
 
-                IMessage message = null;
+                object message = null;
                 try
                 {
                     message = e.Result.ToMessage();
                 }
                 catch (Exception)
                 {
-                    await MessageArrived.RaiseAsync(this, new DeferredAsyncResultEventArgs<IMessage>(new InvalidDataException("Unknown type of message arrived"))).ConfigureAwait(false);
+                    await MessageArrived.RaiseAsync(this, new DeferredAsyncResultEventArgs<object>(new InvalidDataException("Unknown type of message arrived"))).ConfigureAwait(false);
                 }
 
-                await MessageArrived.RaiseAsync(this, new DeferredAsyncResultEventArgs<IMessage>(message)).ConfigureAwait(false);
+                await MessageArrived.RaiseAsync(this, new DeferredAsyncResultEventArgs<object>(message)).ConfigureAwait(false);
             }
         }
     }

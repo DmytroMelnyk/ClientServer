@@ -3,13 +3,12 @@
     using System;
     using System.IO;
     using System.Runtime.Serialization.Formatters.Binary;
-    using Messages;
 
     internal static class Util
     {
         public static byte[] ZeroLengthPacket { get; } = new byte[0];
 
-        public static byte[] ToPacket(this IMessage message)
+        public static byte[] ToPacket(this object message)
         {
             if (message == null)
             {
@@ -23,7 +22,7 @@
             }
         }
 
-        public static IMessage ToMessage(this byte[] binaryMessage)
+        public static object ToMessage(this byte[] binaryMessage)
         {
             if (binaryMessage == null)
             {
@@ -32,7 +31,7 @@
 
             using (MemoryStream stream = new MemoryStream(binaryMessage))
             {
-                return (IMessage)new BinaryFormatter().Deserialize(stream);
+                return new BinaryFormatter().Deserialize(stream);
             }
         }
     }

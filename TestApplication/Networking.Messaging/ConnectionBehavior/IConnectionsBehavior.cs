@@ -1,7 +1,6 @@
 ﻿namespace Networking.Server.ConnectionBehavior
 {
     using System;
-    using Core.Messages;
     using Core.Streams;
 
     public interface IConnectionsBehavior : IDisposable
@@ -10,7 +9,7 @@
 
         void OnException(SustainableMessageStream connection, Exception error);
 
-        void OnMessage(SustainableMessageStream connection, IMessage message);
+        void OnMessage(SustainableMessageStream connection, object message);
 
         void OnConnectionFailure(SustainableMessageStream connection);
     }

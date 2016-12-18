@@ -2,10 +2,8 @@
 {
     using System;
     using System.IO;
-    using System.Net;
     using System.Threading;
     using System.Threading.Tasks;
-    using Core.Messages;
     using Core.Streams;
 
     public class DefaultConnectionBehaviour : IConnectionsBehavior
@@ -29,13 +27,13 @@
             }
         }
 
-        public void OnMessage(SustainableMessageStream connection, IMessage result)
+        public void OnMessage(SustainableMessageStream connection, object result)
         {
             Console.WriteLine($"{DateTime.Now}: Message arrived");
             foreach (var con in connections)
             {
                 Task.Factory.StartNew(
-                    state => con.WriteMessageAsync((IMessage)state),
+                    state => con.WriteMessageAsync(state),
                     result,
                     CancellationToken.None,
                     TaskCreationOptions.DenyChildAttach,

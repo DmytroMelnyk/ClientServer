@@ -3,7 +3,6 @@
     using System;
     using System.IO;
     using System.Net;
-    using Core.Messages;
 
     public class DefaultConnectionBehaviour : IConnectionBehavior
     {
@@ -61,11 +60,11 @@
             }
         }
 
-        public void OnMessage(IMessage result)
+        public void OnMessage(object result)
         {
-            if (result is StringMessage)
+            if (result is string)
             {
-                Console.WriteLine((result as StringMessage).Message);
+                Console.WriteLine(result as string);
             }
         }
     }
