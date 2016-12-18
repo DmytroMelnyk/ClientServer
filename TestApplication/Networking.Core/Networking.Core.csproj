@@ -51,11 +51,11 @@
     <Compile Include="AsyncEvents\DeferralManager.cs" />
     <Compile Include="Messages\IMessage.cs" />
     <Compile Include="Messages\StringMessage.cs" />
-    <Compile Include="PacketStream.cs" />
+    <Compile Include="Streams\PacketStream.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="SustainableMessageStream.cs" />
-    <Compile Include="SustainablePacketStream.cs" />
-    <Compile Include="Util.cs" />
+    <Compile Include="Streams\SustainableMessageStream.cs" />
+    <Compile Include="Streams\SustainablePacketStream.cs" />
+    <Compile Include="Utils\Util.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Networking.Core.ruleset" />

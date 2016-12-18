@@ -1,4 +1,4 @@
-﻿namespace Networking.Client
+﻿namespace Networking.Client.ConnectionBehavior
 {
     using System;
     using System.IO;

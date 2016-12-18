@@ -1,4 +1,4 @@
-﻿namespace Networking.Core
+﻿namespace Networking.Core.Streams
 {
     using System;
     using System.IO;
@@ -6,6 +6,7 @@
     using System.Threading.Tasks;
     using AsyncEvents;
     using Messages;
+    using Utils;
 
     public sealed class SustainableMessageStream : IDisposable
     {

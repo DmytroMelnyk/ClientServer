@@ -1,10 +1,11 @@
-﻿namespace Networking.Core
+﻿namespace Networking.Core.Streams
 {
     using System;
     using System.IO;
     using System.Threading;
     using System.Threading.Tasks;
     using AsyncPrimitives;
+    using Utils;
 
     public class PacketStream : IDisposable
     {

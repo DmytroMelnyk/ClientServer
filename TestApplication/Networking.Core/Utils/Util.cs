@@ -1,4 +1,4 @@
-﻿namespace Networking.Core
+﻿namespace Networking.Core.Utils
 {
     using System;
     using System.IO;

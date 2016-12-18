@@ -6,6 +6,7 @@
     using System.Text.RegularExpressions;
     using System.Threading.Tasks;
     using CommandLine;
+    using ConnectionBehavior;
     using Core.Messages;
 
     public class Program
@@ -41,8 +42,9 @@
 
         private static async Task StartMainLoop(IPEndPoint[] endPoints)
         {
-            var client = new TcpClientImpl(new DefaultConnectionBehaviour(endPoints));
-            client.EstablishConnection(endPoints[0]);
+            var behavior = new DefaultConnectionBehaviour(endPoints);
+            var client = new TcpClientImpl(behavior);
+            client.EstablishConnection(behavior.CurrentServerIPEndPoint);
             while (true)
             {
                 Console.WriteLine("Enter a message");
