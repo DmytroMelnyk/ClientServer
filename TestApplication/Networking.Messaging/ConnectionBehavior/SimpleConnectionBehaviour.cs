@@ -6,7 +6,7 @@
     using System.Threading.Tasks;
     using Core.Streams;
 
-    public class DefaultConnectionBehaviour : IConnectionsBehavior
+    public class SimpleConnectionBehaviour : IConnectionsBehavior
     {
         private ConcurrentSet<SustainableMessageStream> connections = new ConcurrentSet<SustainableMessageStream>();
 
@@ -32,6 +32,11 @@
             Console.WriteLine($"{DateTime.Now}: Message arrived");
             foreach (var con in connections)
             {
+                if (con == connection)
+                {
+                    continue;
+                }
+
                 Task.Factory.StartNew(
                     state => con.WriteMessageAsync(state),
                     result,

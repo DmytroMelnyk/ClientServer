@@ -52,8 +52,8 @@
   <ItemGroup>
     <Compile Include="CommandLineOptions.cs" />
     <Compile Include="ConcurrentSet.cs" />
-    <Compile Include="ConnectionBehavior\DefaultConnectionBehaviour.cs" />
     <Compile Include="ConnectionBehavior\IConnectionsBehavior.cs" />
+    <Compile Include="ConnectionBehavior\SimpleConnectionBehaviour.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="TcpServerImpl.cs" />

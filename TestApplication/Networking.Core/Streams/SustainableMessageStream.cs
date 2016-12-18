@@ -74,16 +74,7 @@
                     return;
                 }
 
-                object message = null;
-                try
-                {
-                    message = e.Result.ToMessage();
-                }
-                catch (Exception)
-                {
-                    await MessageArrived.RaiseAsync(this, new DeferredAsyncResultEventArgs<object>(new InvalidDataException("Unknown type of message arrived"))).ConfigureAwait(false);
-                }
-
+                object message = e.Result.ToMessage();
                 await MessageArrived.RaiseAsync(this, new DeferredAsyncResultEventArgs<object>(message)).ConfigureAwait(false);
             }
         }

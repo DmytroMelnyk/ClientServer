@@ -4,12 +4,12 @@
     using System.IO;
     using System.Net;
 
-    public class DefaultConnectionBehaviour : IConnectionBehavior
+    public class SimpleConnectionBehaviour : IConnectionBehavior
     {
         private readonly IPEndPoint[] _availableServers;
         private int _currentServerIPEndPointIndex;
 
-        public DefaultConnectionBehaviour(params IPEndPoint[] availableServers)
+        public SimpleConnectionBehaviour(params IPEndPoint[] availableServers)
         {
             if (availableServers == null)
             {

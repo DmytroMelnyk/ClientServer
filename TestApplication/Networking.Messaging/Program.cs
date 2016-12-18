@@ -15,7 +15,7 @@
                 if (Parser.Default.ParseArguments(args, options))
                 {
                     var ipEndPoint = new IPEndPoint(IPAddress.Parse("127.0.0.1"), options.Port);
-                    new TcpServerImpl(ipEndPoint, new DefaultConnectionBehaviour()).StartListening();
+                    new TcpServerImpl(ipEndPoint, new SimpleConnectionBehaviour()).StartListening();
                 }
             }
             catch (Exception ex)

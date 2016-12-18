@@ -41,7 +41,7 @@
 
         private static async Task StartMainLoop(IPEndPoint[] endPoints)
         {
-            var behavior = new DefaultConnectionBehaviour(endPoints);
+            var behavior = new SimpleConnectionBehaviour(endPoints);
             var client = new TcpClientImpl(behavior);
             client.EstablishConnection(behavior.CurrentServerIPEndPoint);
             while (true)
