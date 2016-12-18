@@ -4,6 +4,7 @@
     using System.IO;
     using System.Threading;
     using System.Threading.Tasks;
+    using AsyncPrimitives;
 
     public class PacketStream : IDisposable
     {
@@ -64,7 +65,7 @@
                 // Zero-length packets are allowed as keepalives
                 if (length == 0)
                 {
-                    return new byte[0];
+                    return Util.ZeroLengthPacket;
                 }
 
                 // read packet body

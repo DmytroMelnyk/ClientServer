@@ -1,32 +1,48 @@
-﻿using System;
-using System.Linq;
-using System.Net;
-using System.Text.RegularExpressions;
-using System.Threading.Tasks;
-using Networking.Core;
-
-namespace Networking.Client
+﻿namespace Networking.Client
 {
-    class Program
+    using System;
+    using System.Linq;
+    using System.Net;
+    using System.Text.RegularExpressions;
+    using System.Threading.Tasks;
+    using CommandLine;
+    using Core.Messages;
+
+    public class Program
     {
-        static IPEndPoint[] ConvertToEndPoints(string[] endPoints)
+        public static int Main(string[] args)
         {
-            return endPoints.Select(endPoint => Regex.Match(endPoint, "(?<ipAddress>.+):(?<port>\\d+)"))
+            try
+            {
+                var options = new CommandLineOptions();
+                if (Parser.Default.ParseArguments(args, options))
+                {
+                    var endPoints = ConvertToEndPoints(options.Endpoints);
+                    Task.Run(() => StartMainLoop(endPoints)).Wait();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+                Console.ReadKey();
+                return 1;
+            }
+
+            Console.ReadKey();
+            return 0;
+        }
+
+        private static IPEndPoint[] ConvertToEndPoints(string[] endPoints)
+        {
+            return endPoints.Select(endPoint => Regex.Match(endPoint, "(?<ipAddress>\\d{1,3}.\\d{1,3}.\\d{1,3}.\\d{1,3})\\s*:\\s*(?<port>\\d{1,5})"))
                 .Select(match => new IPEndPoint(IPAddress.Parse(match.Groups["ipAddress"].Value), int.Parse(match.Groups["port"].Value)))
                 .ToArray();
         }
 
-        static void Main(string[] args)
+        private static async Task StartMainLoop(IPEndPoint[] endPoints)
         {
-            var endPoints = ConvertToEndPoints(args);
-            Task.Run(async () => await StartMainLoop(endPoints)).Wait();
-        }
-
-        static async Task StartMainLoop(IPEndPoint[] endPoints)
-        {
-            var client = new TcpClientImpl(endPoints);
-            await client.ConnectAsync().ConfigureAwait(false);
-            client.StartReadingMessagesAsync();
+            var client = new TcpClientImpl(new DefaultConnectionBehaviour(endPoints));
+            client.EstablishConnection(endPoints[0]);
             while (true)
             {
                 Console.WriteLine("Enter a message");
@@ -35,9 +51,9 @@ namespace Networking.Client
             }
         }
 
-        static IMessage ToTextMessage(string textMessage)
+        private static IMessage ToTextMessage(string textMessage)
         {
-            throw new NotImplementedException();
+            return new StringMessage { Message = textMessage };
         }
     }
 }

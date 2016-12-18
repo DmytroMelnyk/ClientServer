@@ -1,4 +1,4 @@
-﻿namespace Networking.Core
+﻿namespace Networking.Core.AsyncPrimitives
 {
     using System;
     using System.Threading;

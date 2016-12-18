@@ -1,98 +1,76 @@
-﻿using System;
-using System.Net;
-using System.Threading.Tasks;
-using Networking.Core;
-using System.ComponentModel;
-
-namespace Networking.Client
+﻿namespace Networking.Client
 {
+    using System;
+    using System.Net;
+    using System.Net.Sockets;
+    using System.Threading;
+    using System.Threading.Tasks;
+    using Core;
+    using Core.AsyncEvents;
+    using Core.Messages;
+
     public class TcpClientImpl : IDisposable
     {
-        private readonly TcpMessagePipe connection;
-        private readonly IPEndPoint[] availableServers;
+        private SustainableMessageStream _connection;
+        private IConnectionBehavior _behavior;
 
-        private int currentServerIPEndPointIndex;
-        public IPEndPoint CurrentServerIPEndPoint
+        public TcpClientImpl(IConnectionBehavior behavior)
         {
-            get { return availableServers[currentServerIPEndPointIndex]; }
-        }
-
-        public TcpClientImpl(params IPEndPoint[] availableServers)
-        {
-            if (availableServers == null)
-                throw new ArgumentNullException(nameof(availableServers));
-            if (availableServers.Length == 0)
-                throw new ArgumentException("Should not be empty", nameof(availableServers));
-
-            this.availableServers = availableServers;
-            currentServerIPEndPointIndex = -1;
-            connection = new TcpMessagePipe();
-            connection.MessageArrived += OnMessageArrived;
-            connection.ConnectionFailure += OnConnectionFailure;
-        }
-
-        private async void OnConnectionFailure(object sender, DefferedAsyncCompletedEventArgs e)
-        {
-            using (e.GetDeferral())
+            if (behavior == null)
             {
-                await ConnectAsync().ConfigureAwait(false);
+                throw new ArgumentNullException(nameof(behavior));
             }
+
+            _behavior = behavior;
         }
 
-        public async Task ConnectAsync()
+        public void EstablishConnection(IPEndPoint endPoint)
         {
-            try
-            {
-                currentServerIPEndPointIndex++;
-                if (currentServerIPEndPointIndex >= availableServers.Length)
-                    throw new ApplicationException("There is no accessible IPEndPoints.");
-                await ConnectAsync(CurrentServerIPEndPoint).ConfigureAwait(false);
-            }
-            catch (Exception ex) 
-                when (ex.GetType() != typeof(ApplicationException))
-            {
-            }
+            var client = new TcpClient();
+            client.Connect(endPoint.Address, endPoint.Port);
+            var networkStream = client.GetStream();
+            _connection = new SustainableMessageStream(networkStream);
+            _connection.ConnectionFailure += OnConnectionFailure;
+            _connection.MessageArrived += OnMessageArrived;
+            _connection.StartReadingMessages();
         }
 
-        private async void OnMessageArrived(object sender, DefferedAsyncResultEventArgs<IMessage> e)
+        public void AbortConnection()
         {
-            using (e.GetDeferral())
-            {
-                if (e.Cancelled)
-                {
-                    Console.WriteLine("Reading was cancelled");
-                    return;
-                }
-                if (e.Error != null)
-                {
-                    connection.StopReading();
-                    await ConnectAsync().ConfigureAwait(false);
-                    StartReadingMessagesAsync();
-                    return;
-                }
-
-                Console.WriteLine(e.Result);
-            }
-        }
-
-        private Task ConnectAsync(IPEndPoint endpoint)
-        {
-            return connection.ConnectAsync(endpoint);
+            Dispose();
         }
 
         public Task WriteMessageAsync(IMessage message)
         {
-            return connection.WriteMessageAsync(message);
-        }
-
-        public void StartReadingMessagesAsync()
-        {
-            connection.StartReadingMessagesAsync();
+            return _connection.WriteMessageAsync(message);
         }
 
         public void Dispose()
         {
-            connection.Dispose();
+            _connection.Dispose();
+        }
+
+        private void OnMessageArrived(object sender, DeferredAsyncResultEventArgs<IMessage> e)
+        {
+            using (e.GetDeferral())
+            {
+                if (e.Error != null)
+                {
+                    _behavior.OnException(this, e.Error);
+                }
+                else
+                {
+                    _behavior.OnMessage(e.Result);
+                }
+            }
+        }
+
+        private void OnConnectionFailure(object sender, DeferredAsyncCompletedEventArgs e)
+        {
+            using (e.GetDeferral())
+            {
+                _behavior.OnConnectionFailure(this);
+            }
         }
     }
 }
