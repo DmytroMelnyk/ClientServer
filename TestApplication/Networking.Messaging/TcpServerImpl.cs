@@ -46,7 +46,14 @@
         public void Dispose()
         {
             _behavior.Dispose();
-            _listener.Stop();
+
+            try
+            {
+                _listener.Stop();
+            }
+            catch (SocketException)
+            {
+            }
         }
 
         private void OnConnectionFailure(object sender, DeferredAsyncCompletedEventArgs e)
@@ -67,18 +74,12 @@
 
                 if (e.Error != null)
                 {
-                    if (e.Error is InvalidDataException)
-                    {
-                        _behavior.OnException(connection, e.Error);
-                        return;
-                    }
-
                     Dispose(connection);
                     _behavior.OnConnectionFailure(connection);
                     return;
                 }
 
-                _behavior.OnMessage((SustainableMessageStream)sender, e.Result);
+                _behavior.OnMessage(connection, e.Result);
             }
         }
 
