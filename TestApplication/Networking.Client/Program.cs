@@ -43,22 +43,41 @@
                     .Interval(TimeSpan.FromSeconds(1))
                     .TakeUntil(switches.Where(on => !on)));
 
-            var readWriteOperations = Observable
+            var operations = Observable
                 .Interval(TimeSpan.FromSeconds(0.1))
                 .Where(_ => Console.KeyAvailable)
                 .Select(_ => Console.ReadKey().KeyChar)
-                .Select(x => x == 't')
+                .Multicast(new BehaviorSubject<char>(' '))
+                .RefCount();
+
+            var readOperations = operations
+                .Where(x => x == 'r' || x == 'e')
+                .Select(x => x == 'r')
                 .Multicast(new BehaviorSubject<bool>(false))
                 .RefCount();
 
-            var ops = readWriteOperations
+            var rops = readOperations
                 .DistinctUntilChanged()
                 .Where(on => on)
                 .SelectMany(Observable
                     .Interval(TimeSpan.FromSeconds(0.1))
-                    .TakeUntil(readWriteOperations.Where(on => !on)));
+                    .TakeUntil(readOperations.Where(on => !on)));
 
-            var anyActivityWasNotNoticed = ops
+            var writeOperations = operations
+                .Where(x => x == 'w' || x == 'q')
+                .Select(x => x == 'w')
+                .Multicast(new BehaviorSubject<bool>(false))
+                .RefCount();
+
+            var wops = writeOperations
+                .DistinctUntilChanged()
+                .Where(on => on)
+                .SelectMany(Observable
+                    .Interval(TimeSpan.FromSeconds(0.1))
+                    .TakeUntil(writeOperations.Where(on => !on)));
+
+            //rops.CombineLatest(wops, (x, y) => x + y).
+            var anyActivityWasNotNoticed = rops.Merge(wops)
                 .Window(TimeSpan.FromSeconds(1))
                 .SelectMany(x => x.Any())
                 .Where(x => !x);
