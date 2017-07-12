@@ -38,7 +38,7 @@
                 }
 
                 Task.Factory.StartNew(
-                    state => con.WriteMessageAsync(state),
+                    state => con.WriteMessageAsync(state, CancellationToken.None),
                     result,
                     CancellationToken.None,
                     TaskCreationOptions.DenyChildAttach,

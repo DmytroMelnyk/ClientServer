@@ -52,7 +52,9 @@
 
         public void OnException(TcpClientImpl tcpClientImpl, Exception error)
         {
-            Console.WriteLine(error.Message);
+            var aggregateException = error as AggregateException;
+            if (aggregateException != null)
+                Console.WriteLine(aggregateException.InnerException.Message);
 
             if (error.GetType() != typeof(InvalidDataException))
             {

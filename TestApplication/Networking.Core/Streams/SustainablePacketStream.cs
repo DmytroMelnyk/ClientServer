@@ -2,39 +2,77 @@
 {
     using System;
     using System.IO;
+    using System.Reactive;
+    using System.Reactive.Disposables;
+    using System.Reactive.Linq;
+    using System.Reactive.Subjects;
+    using System.Reactive.Threading.Tasks;
     using System.Threading;
     using System.Threading.Tasks;
-    using AsyncEvents;
+    using AsyncPrimitives;
     using Utils;
 
-    public class SustainablePacketStream
+    public class SustainablePacketStream: IDisposable
     {
-        private readonly Timer _timer;
-
-        public SustainablePacketStream(PacketStream packetStream)
-        {
-            if (packetStream == null)
-            {
-                throw new ArgumentNullException(nameof(packetStream));
-            }
-
-            PacketStream = packetStream;
-            KeepAliveTimeout = TimeSpan.FromSeconds(5);
-            _timer = new Timer(state => ((SustainablePacketStream)state).CheckConnectionAsync(), this, (int)KeepAliveTimeout.TotalMilliseconds, Timeout.Infinite);
-        }
+        private readonly Subject<bool> reading;
+        private readonly Subject<bool> writing;
+        private readonly AsyncLock writeLock;
 
         public SustainablePacketStream(Stream stream)
-            : this(new PacketStream(stream))
         {
+            if (stream == null)
+            {
+                throw new ArgumentNullException(nameof(stream));
+            }
+
+            Stream = stream;
+            writeLock = new AsyncLock();
+            writing = new Subject<bool>();
+            reading = new Subject<bool>();
+            Messages = Observable.Create<Unit>(observer =>
+            {
+                Timer timer = null;
+                timer = new Timer(
+                    _ =>
+                    {
+                        observer.OnNext(Unit.Default);
+                        timer.Change((int)KeepAliveTimeout.TotalMilliseconds, Timeout.Infinite);
+                    }, null, (int)KeepAliveTimeout.TotalMilliseconds, Timeout.Infinite);
+
+                var disposable = reading.CombineLatest(writing, (reading, writing) => reading || writing)
+                    .DistinctUntilChanged()
+                    .Subscribe(isBusy =>
+                    {
+                        if (isBusy)
+                        {
+                            timer.Change(Timeout.Infinite, Timeout.Infinite);
+                        }
+                        else
+                        {
+                            timer.Change((int)KeepAliveTimeout.TotalMilliseconds, Timeout.Infinite);
+                        }
+                    });
+
+                writing.OnNext(false);
+                reading.OnNext(false);
+
+                return Disposable.Create(() =>
+                {
+                    disposable.Dispose();
+                    timer.Dispose();
+                });
+            })
+            .SelectMany(_ => WritePacketAsync(Util.ZeroLengthPacket, CancellationToken.None).ToObservable())
+            .Select(_ => Util.ZeroLengthPacket)
+            .Merge(Observable.FromAsync(ReadPacketAsync).Repeat())
+            .Where(packet => packet.Length != 0);
         }
 
-        public event EventHandler<DeferredAsyncCompletedEventArgs> OnConnectionBreak;
+        public Stream Stream { get; }
 
-        public event EventHandler<DeferredAsyncResultEventArgs<byte[]>> PacketArrived;
+        public IObservable<byte[]> Messages { get; }
 
         public TimeSpan KeepAliveTimeout { get; set; }
-
-        public PacketStream PacketStream { get; }
 
         public Task WritePacketAsync(byte[] packet, CancellationToken ct)
         {
@@ -43,65 +81,68 @@
                 throw new ArgumentNullException(nameof(packet));
             }
 
-            return WriteMessageInternalAsync(packet, ct);
-        }
-
-        public async void StartReadingLoopAsync()
-        {
-            try
-            {
-                while (true)
-                {
-                    try
-                    {
-                        // if any exception happens at this point we should unwrap it. If read was successfull we should reset timer,
-                        // if read was followed by InvalidDataException we should reset timer too.
-                        var packet = await PacketStream.ReadPacketAsync(CancellationToken.None).ConfigureAwait(false);
-                        _timer.Change((int)KeepAliveTimeout.TotalMilliseconds, Timeout.Infinite);
-                        if (packet != Util.ZeroLengthPacket)
-                        {
-                            await PacketArrived.RaiseAsync(this, new DeferredAsyncResultEventArgs<byte[]>(packet)).ConfigureAwait(false);
-                        }
-                    }
-                    catch (InvalidDataException ex)
-                    {
-                        _timer.Change((int)KeepAliveTimeout.TotalMilliseconds, Timeout.Infinite);
-                        await PacketArrived.RaiseAsync(this, new DeferredAsyncResultEventArgs<byte[]>(ex)).ConfigureAwait(false);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _timer.Change(Timeout.Infinite, Timeout.Infinite);
-                await PacketArrived.RaiseAsync(this, new DeferredAsyncResultEventArgs<byte[]>(ex)).ConfigureAwait(false);
-            }
+            return WritePacketAsyncImpl(packet.ToPacket(), ct);
         }
 
         public void Dispose()
         {
-            _timer.Dispose();
-            PacketStream.Dispose();
+            Stream.Dispose();
         }
 
-        private async Task WriteMessageInternalAsync(byte[] packet, CancellationToken ct)
+        private async Task<byte[]> ReadPacketAsync(CancellationToken ct)
         {
-            _timer.Change(Timeout.Infinite, Timeout.Infinite);
+            // Read packet header
+            var lengthBuffer = await ReadStreamAsync(sizeof(int), ct).ConfigureAwait(false);
 
-            // if any exception happens at this point we should unwrap it. It'll also prevent timer from turning on.
-            await PacketStream.WritePacketAsync(packet, CancellationToken.None).ConfigureAwait(false);
-            _timer.Change((int)KeepAliveTimeout.TotalMilliseconds, Timeout.Infinite);
+            reading.OnNext(true);
+
+            var length = BitConverter.ToInt32(lengthBuffer, 0);
+
+            if (length < 0)
+            {
+                throw new InvalidDataException("Packet length less than zero (corrupted stream state)");
+            }
+
+            // Zero-length packets are allowed as keepalives
+            if (length == 0)
+            {
+                reading.OnNext(false);
+                return Util.ZeroLengthPacket;
+            }
+
+            // read packet body
+            var body = await ReadStreamAsync(length, ct).ConfigureAwait(false);
+            reading.OnNext(false);
+            return body;
         }
 
-        private async void CheckConnectionAsync()
+        private async Task WritePacketAsyncImpl(byte[] packet, CancellationToken ct)
         {
-            try
+            using (await writeLock.LockAsync())
             {
-                await WriteMessageInternalAsync(Util.ZeroLengthPacket, CancellationToken.None).ConfigureAwait(false);
+                writing.OnNext(true);
+                var lengthPrefix = BitConverter.GetBytes(packet.Length);
+
+                await Stream.WriteAsync(lengthPrefix, 0, sizeof(int), ct).ConfigureAwait(false);
+
+                if (packet.Length != 0)
+                {
+                    await Stream.WriteAsync(packet, 0, packet.Length, ct).ConfigureAwait(false);
+                }
+
+                writing.OnNext(false);
             }
-            catch (Exception ex)
+        }
+
+        private async Task<byte[]> ReadStreamAsync(int bytesCount, CancellationToken ct)
+        {
+            var buffer = new byte[bytesCount];
+            for (var totalBytesReceived = 0; totalBytesReceived < bytesCount;
+                totalBytesReceived += await Stream.ReadAsync(buffer, totalBytesReceived, bytesCount - totalBytesReceived, ct))
             {
-                await OnConnectionBreak.RaiseAsync(this, new DeferredAsyncCompletedEventArgs(ex, false, null)).ConfigureAwait(false);
             }
+
+            return buffer;
         }
     }
 }

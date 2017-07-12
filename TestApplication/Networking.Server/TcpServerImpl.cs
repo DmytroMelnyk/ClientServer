@@ -36,9 +36,7 @@
             {
                 var tcpClient = _listener.AcceptTcpClient();
                 var connection = new SustainableMessageStream(tcpClient.GetStream());
-                connection.MessageArrived += OnMessageArrived;
-                connection.ConnectionFailure += OnConnectionFailure;
-                connection.StartReadingMessages();
+                connection.Messages.Subscribe(message => _behavior.OnMessage(connection, message), ex => _behavior.OnException(connection, ex));
                 _behavior.OnNewConnectionArrived(connection);
             }
         }
@@ -54,40 +52,6 @@
             catch (SocketException)
             {
             }
-        }
-
-        private void OnConnectionFailure(object sender, DeferredAsyncCompletedEventArgs e)
-        {
-            using (e.GetDeferral())
-            {
-                var connection = (SustainableMessageStream)sender;
-                Dispose(connection);
-                _behavior.OnConnectionFailure(connection);
-            }
-        }
-
-        private void OnMessageArrived(object sender, DeferredAsyncResultEventArgs<object> e)
-        {
-            using (e.GetDeferral())
-            {
-                var connection = (SustainableMessageStream)sender;
-
-                if (e.Error != null)
-                {
-                    Dispose(connection);
-                    _behavior.OnConnectionFailure(connection);
-                    return;
-                }
-
-                _behavior.OnMessage(connection, e.Result);
-            }
-        }
-
-        private void Dispose(SustainableMessageStream connection)
-        {
-            connection.MessageArrived -= OnMessageArrived;
-            connection.ConnectionFailure -= OnConnectionFailure;
-            connection.Dispose();
         }
     }
 }
