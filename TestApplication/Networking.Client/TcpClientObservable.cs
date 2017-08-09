@@ -8,15 +8,15 @@
     using System.Reactive.Linq;
     using System.Threading;
     using System.Threading.Tasks;
-    using Core.Streams;
+    using Networking.Core;
 
-    public class TcpClientImpl
+    public class TcpClientObservable
     {
         private SustainableMessageStream _sustainableMessageStream;
 
         public IObservable<object> Messages { get; }
 
-        public TcpClientImpl(params IPEndPoint[] ipEndPoints)
+        public TcpClientObservable(params IPEndPoint[] ipEndPoints)
         {
             Messages = Observable
                 .OnErrorResumeNext(ipEndPoints.Select(GetConnection))

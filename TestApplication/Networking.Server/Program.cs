@@ -14,7 +14,11 @@
                 if (Parser.Default.ParseArguments(args, options))
                 {
                     var ipEndPoint = new IPEndPoint(IPAddress.Parse("127.0.0.1"), options.Port);
-                    new TcpServerImpl(ipEndPoint).StartListening();
+                    using (new TcpServerObservable(new TcpListenerObservable(ipEndPoint)))
+                    {
+                        Console.WriteLine("Press any key to stop server...");
+                        Console.ReadLine();
+                    }
                 }
             }
             catch (Exception ex)

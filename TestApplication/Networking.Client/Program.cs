@@ -1,13 +1,12 @@
-﻿using System.Collections.Generic;
-using System.Reactive.Linq;
-using System.Threading;
-
-namespace Networking.Client
+﻿namespace Networking.Client
 {
     using System;
+    using System.Collections.Generic;
     using System.Linq;
     using System.Net;
+    using System.Reactive.Linq;
     using System.Text.RegularExpressions;
+    using System.Threading;
     using System.Threading.Tasks;
     using CommandLine;
 
@@ -50,7 +49,7 @@ namespace Networking.Client
 
         private static async Task StartMainLoop(IPEndPoint[] endPoints)
         {
-            var client = new TcpClientImpl(endPoints);
+            var client = new TcpClientObservable(endPoints);
             client.Messages.Subscribe(Console.WriteLine, Console.WriteLine, () => Console.WriteLine("Completed"));
             while (true)
             {
