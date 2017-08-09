@@ -6,7 +6,7 @@
     using System.Reactive.Concurrency;
     using System.Reactive.Linq;
     using System.Reactive.Subjects;
-    using Networking.Core;
+    using Core;
 
     public class TcpListenerObservable : IConnectableObservable<SustainableMessageStream>
     {

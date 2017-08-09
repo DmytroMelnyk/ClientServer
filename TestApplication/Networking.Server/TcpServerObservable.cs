@@ -4,7 +4,7 @@
     using System.Linq;
     using System.Reactive.Threading.Tasks;
     using System.Threading;
-    using Networking.Core;
+    using Core;
 
     public class TcpServerObservable : IDisposable
     {
