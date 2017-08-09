@@ -12,31 +12,26 @@
 
         public SustainableMessageStream(SustainablePacketStream stream)
         {
-            _stream = stream ?? throw new ArgumentNullException(nameof(stream));
             _writeLock = new AsyncLock();
+            _stream = stream ?? throw new ArgumentNullException(nameof(stream));
             Messages = _stream.Messages.Select(x => x.ToMessage());
         }
 
         public IObservable<object> Messages { get; }
 
-        public Task WriteMessageAsync(object message, CancellationToken ct)
+        public async Task WriteMessageAsync(object message, CancellationToken ct)
         {
             if (message == null)
             {
                 throw new ArgumentNullException(nameof(message));
             }
 
-            return WritePacketAsyncImpl(message.ToPacket(), ct);
+            using (await _writeLock.LockAsync())
+            {
+                await _stream.WritePacketAsync(message.ToPacket(), ct);
+            }
         }
 
         public void Dispose() => _stream.Dispose();
-
-        private async Task WritePacketAsyncImpl(byte[] message, CancellationToken ct)
-        {
-            using (await _writeLock.LockAsync())
-            {
-                await _stream.WritePacketAsync(message, ct);
-            }
-        }
     }
 }
