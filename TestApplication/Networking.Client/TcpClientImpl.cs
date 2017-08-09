@@ -1,53 +1,48 @@
 ﻿namespace Networking.Client
 {
     using System;
+    using System.Linq;
     using System.Net;
     using System.Net.Sockets;
-    using System.Threading.Tasks;
-    using ConnectionBehavior;
-    using Core.AsyncEvents;
-    using Core.Streams;
+    using System.Reactive.Disposables;
+    using System.Reactive.Linq;
     using System.Threading;
+    using System.Threading.Tasks;
+    using Core.Streams;
 
-    public class TcpClientImpl : IDisposable
+    public class TcpClientImpl
     {
-        private SustainableMessageStream _connection;
-        private IConnectionBehavior _behavior;
-        private IDisposable messageObservable;
+        private SustainableMessageStream _sustainableMessageStream;
 
-        public TcpClientImpl(IConnectionBehavior behavior)
+        public IObservable<object> Messages { get; }
+
+        public TcpClientImpl(params IPEndPoint[] ipEndPoints)
         {
-            if (behavior == null)
+            Messages = Observable
+                .OnErrorResumeNext(ipEndPoints.Select(GetConnection))
+                .Select(x => x);
+        }
+
+        private IObservable<object> GetConnection(IPEndPoint endPoint)
+        {
+            return Observable.Create<object>(observer =>
             {
-                throw new ArgumentNullException(nameof(behavior));
+                var client = new TcpClient();
+                client.Connect(endPoint.Address, endPoint.Port);
+                var networkStream = new SustainablePacketStream(client.GetStream(), TimeSpan.FromSeconds(5));
+                _sustainableMessageStream = new SustainableMessageStream(networkStream);
+                return new CompositeDisposable(_sustainableMessageStream.Messages.Subscribe(observer), client);
+            });
+        }
+
+        public Task WriteMessageAsync(object message, CancellationToken ct)
+        {
+            if (message == null)
+            {
+                throw new ArgumentNullException(nameof(message));
             }
 
-            _behavior = behavior;
-        }
-
-        public void EstablishConnection(IPEndPoint endPoint)
-        {
-            var client = new TcpClient();
-            client.Connect(endPoint.Address, endPoint.Port);
-            var networkStream = client.GetStream();
-            _connection = new SustainableMessageStream(networkStream);
-            messageObservable = _connection.Messages.Subscribe(_behavior.OnMessage, ex => _behavior.OnException(this, ex));
-        }
-
-        public void AbortConnection()
-        {
-            Dispose();
-        }
-
-        public Task WriteMessageAsync(object message)
-        {
-            return _connection.WriteMessageAsync(message, CancellationToken.None);
-        }
-
-        public void Dispose()
-        {
-            _connection.Dispose();
-            messageObservable.Dispose();
+            return _sustainableMessageStream.WriteMessageAsync(message, ct);
         }
     }
 }

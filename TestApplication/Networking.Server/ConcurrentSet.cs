@@ -3,33 +3,18 @@
     using System.Collections;
     using System.Collections.Concurrent;
     using System.Collections.Generic;
+    using System.Linq;
 
     internal class ConcurrentSet<T> : IEnumerable<T>
     {
-        private ConcurrentDictionary<T, object> dictionary = new ConcurrentDictionary<T, object>();
+        private readonly ConcurrentDictionary<T, object> _dictionary = new ConcurrentDictionary<T, object>();
 
-        public IEnumerator<T> GetEnumerator()
-        {
-            foreach (var item in dictionary)
-            {
-                yield return item.Key;
-            }
-        }
+        public IEnumerator<T> GetEnumerator() => _dictionary.Select(item => item.Key).GetEnumerator();
 
-        public bool TryAdd(T item)
-        {
-            return dictionary.TryAdd(item, null);
-        }
+        public bool TryAdd(T item) => _dictionary.TryAdd(item, null);
 
-        public bool TryRemove(T item)
-        {
-            object temp;
-            return dictionary.TryRemove(item, out temp);
-        }
+        public bool TryRemove(T item) => _dictionary.TryRemove(item, out object temp);
 
-        IEnumerator IEnumerable.GetEnumerator()
-        {
-            return GetEnumerator();
-        }
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 }

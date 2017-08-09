@@ -3,7 +3,6 @@
     using System;
     using System.Net;
     using CommandLine;
-    using ConnectionBehavior;
 
     public class Program
     {
@@ -15,7 +14,7 @@
                 if (Parser.Default.ParseArguments(args, options))
                 {
                     var ipEndPoint = new IPEndPoint(IPAddress.Parse("127.0.0.1"), options.Port);
-                    new TcpServerImpl(ipEndPoint, new SimpleConnectionBehaviour()).StartListening();
+                    new TcpServerImpl(ipEndPoint).StartListening();
                 }
             }
             catch (Exception ex)

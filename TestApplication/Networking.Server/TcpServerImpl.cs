@@ -4,29 +4,67 @@
     using System.IO;
     using System.Net;
     using System.Net.Sockets;
-    using ConnectionBehavior;
-    using Core.AsyncEvents;
+    using System.Threading;
+    using System.Threading.Tasks;
     using Core.Streams;
 
     public class TcpServerImpl : IDisposable
     {
         private readonly TcpListener _listener;
-        private readonly IConnectionsBehavior _behavior;
+        private readonly ConcurrentSet<SustainableMessageStream> _connections = new ConcurrentSet<SustainableMessageStream>();
 
-        public TcpServerImpl(IPEndPoint endpoint, IConnectionsBehavior behavior)
+        private void OnConnectionFailure(SustainableMessageStream connection)
+        {
+            if (_connections.TryRemove(connection))
+            {
+                Console.WriteLine("Client was disconnected");
+            }
+        }
+
+        private void OnException(SustainableMessageStream connection, Exception error)
+        {
+            Console.WriteLine(error.Message);
+            if (error.GetType() != typeof(InvalidDataException))
+            {
+                OnConnectionFailure(connection);
+            }
+        }
+
+        private void OnMessage(SustainableMessageStream connection, object result)
+        {
+            Console.WriteLine($"{DateTime.Now}: Message arrived");
+            foreach (var con in _connections)
+            {
+                if (con == connection)
+                {
+                    continue;
+                }
+
+                Task.Factory.StartNew(
+                    state => con.WriteMessageAsync(state, CancellationToken.None),
+                    result,
+                    CancellationToken.None,
+                    TaskCreationOptions.DenyChildAttach,
+                    TaskScheduler.Default);
+            }
+        }
+
+        private void OnNewConnectionArrived(SustainableMessageStream connection)
+        {
+            if (_connections.TryAdd(connection))
+            {
+                Console.WriteLine("New connection was added");
+            }
+        }
+
+        public TcpServerImpl(IPEndPoint endpoint)
         {
             if (endpoint == null)
             {
                 throw new ArgumentNullException(nameof(endpoint));
             }
 
-            if (behavior == null)
-            {
-                throw new ArgumentNullException(nameof(behavior));
-            }
-
             _listener = new TcpListener(endpoint);
-            _behavior = behavior;
         }
 
         public void StartListening()
@@ -35,15 +73,18 @@
             while (true)
             {
                 var tcpClient = _listener.AcceptTcpClient();
-                var connection = new SustainableMessageStream(tcpClient.GetStream());
-                connection.Messages.Subscribe(message => _behavior.OnMessage(connection, message), ex => _behavior.OnException(connection, ex));
-                _behavior.OnNewConnectionArrived(connection);
+                var connection = new SustainableMessageStream(new SustainablePacketStream(tcpClient.GetStream(), TimeSpan.FromSeconds(5)));
+                connection.Messages.Subscribe(message => OnMessage(connection, message), ex => OnException(connection, ex));
+                OnNewConnectionArrived(connection);
             }
         }
 
         public void Dispose()
         {
-            _behavior.Dispose();
+            foreach (var connection in _connections)
+            {
+                connection.Dispose();
+            }
 
             try
             {

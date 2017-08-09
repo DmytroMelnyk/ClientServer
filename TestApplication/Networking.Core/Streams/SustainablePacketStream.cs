@@ -2,77 +2,45 @@
 {
     using System;
     using System.IO;
-    using System.Reactive;
-    using System.Reactive.Disposables;
+    using System.Reactive.Concurrency;
     using System.Reactive.Linq;
     using System.Reactive.Subjects;
-    using System.Reactive.Threading.Tasks;
     using System.Threading;
     using System.Threading.Tasks;
-    using AsyncPrimitives;
     using Utils;
 
-    public class SustainablePacketStream: IDisposable
+    public class SustainablePacketStream : IDisposable
     {
-        private readonly Subject<bool> reading;
-        private readonly Subject<bool> writing;
-        private readonly AsyncLock writeLock;
+        private readonly Subject<bool> _reading = new Subject<bool>();
+        private readonly Subject<bool> _writing = new Subject<bool>();
+        private readonly Stream _stream;
 
-        public SustainablePacketStream(Stream stream)
+        public SustainablePacketStream(Stream stream, TimeSpan keepAlivePeriod)
         {
-            if (stream == null)
-            {
-                throw new ArgumentNullException(nameof(stream));
-            }
+            _stream = stream ?? throw new ArgumentNullException(nameof(stream));
+            KeepAliveTimeout = keepAlivePeriod;
 
-            Stream = stream;
-            writeLock = new AsyncLock();
-            writing = new Subject<bool>();
-            reading = new Subject<bool>();
-            Messages = Observable.Create<Unit>(observer =>
-            {
-                Timer timer = null;
-                timer = new Timer(
-                    _ =>
-                    {
-                        observer.OnNext(Unit.Default);
-                        timer.Change((int)KeepAliveTimeout.TotalMilliseconds, Timeout.Infinite);
-                    }, null, (int)KeepAliveTimeout.TotalMilliseconds, Timeout.Infinite);
-
-                var disposable = reading.CombineLatest(writing, (reading, writing) => reading || writing)
-                    .DistinctUntilChanged()
-                    .Subscribe(isBusy =>
-                    {
-                        if (isBusy)
-                        {
-                            timer.Change(Timeout.Infinite, Timeout.Infinite);
-                        }
-                        else
-                        {
-                            timer.Change((int)KeepAliveTimeout.TotalMilliseconds, Timeout.Infinite);
-                        }
-                    });
-
-                writing.OnNext(false);
-                reading.OnNext(false);
-
-                return Disposable.Create(() =>
-                {
-                    disposable.Dispose();
-                    timer.Dispose();
-                });
-            })
-            .SelectMany(_ => WritePacketAsync(Util.ZeroLengthPacket, CancellationToken.None).ToObservable())
-            .Select(_ => Util.ZeroLengthPacket)
-            .Merge(Observable.FromAsync(ReadPacketAsync).Repeat())
-            .Where(packet => packet.Length != 0);
+            Messages = Observable
+                .FromAsync(ReadPacketAsync, Scheduler.CurrentThread)
+                .Repeat()
+                .Merge(KeepAlives())
+                .Where(x => x.Length != 0);
         }
 
-        public Stream Stream { get; }
+        private IObservable<byte[]> KeepAlives() => _writing
+            .ToPulsar(TimeSpan.FromSeconds(1))
+            .Merge(_reading.ToPulsar(TimeSpan.FromSeconds(1)))
+            .Window(KeepAliveTimeout)
+            .SelectMany(x => x.Any())
+            .Where(x => !x)
+            .SelectMany(_ => WriteKeepAliveAsync())
+            .Materialize()
+            .Do(Console.WriteLine)
+            .Dematerialize();
 
         public IObservable<byte[]> Messages { get; }
 
-        public TimeSpan KeepAliveTimeout { get; set; }
+        public TimeSpan KeepAliveTimeout { get; }
 
         public Task WritePacketAsync(byte[] packet, CancellationToken ct)
         {
@@ -81,68 +49,76 @@
                 throw new ArgumentNullException(nameof(packet));
             }
 
-            return WritePacketAsyncImpl(packet.ToPacket(), ct);
+            return WritePacketAsyncImpl(packet, ct);
         }
 
-        public void Dispose()
-        {
-            Stream.Dispose();
-        }
+        public void Dispose() => _stream.Dispose();
 
-        private async Task<byte[]> ReadPacketAsync(CancellationToken ct)
+        private Task<byte[]> ReadPacketAsync(CancellationToken ct) => ReadPacketAsyncImpl(ct);
+
+        private async Task<byte[]> ReadPacketAsyncImpl(CancellationToken ct)
         {
             // Read packet header
             var lengthBuffer = await ReadStreamAsync(sizeof(int), ct).ConfigureAwait(false);
 
-            reading.OnNext(true);
-
-            var length = BitConverter.ToInt32(lengthBuffer, 0);
-
-            if (length < 0)
+            using (new OperationNotifier(_reading))
             {
-                throw new InvalidDataException("Packet length less than zero (corrupted stream state)");
-            }
+                var length = BitConverter.ToInt32(lengthBuffer, 0);
+                if (length < 0)
+                {
+                    throw new InvalidDataException("Packet length less than zero (corrupted stream state)");
+                }
 
-            // Zero-length packets are allowed as keepalives
-            if (length == 0)
-            {
-                reading.OnNext(false);
-                return Util.ZeroLengthPacket;
-            }
+                // Zero-length packets are allowed as keepalives
+                if (length == 0)
+                {
+                    return Util.ZeroLengthPacket;
+                }
 
-            // read packet body
-            var body = await ReadStreamAsync(length, ct).ConfigureAwait(false);
-            reading.OnNext(false);
-            return body;
+                // read packet body
+                return await ReadStreamAsync(length, ct).ConfigureAwait(false);
+            }
         }
 
         private async Task WritePacketAsyncImpl(byte[] packet, CancellationToken ct)
         {
-            using (await writeLock.LockAsync())
+            using (new OperationNotifier(_writing))
             {
-                writing.OnNext(true);
                 var lengthPrefix = BitConverter.GetBytes(packet.Length);
-
-                await Stream.WriteAsync(lengthPrefix, 0, sizeof(int), ct).ConfigureAwait(false);
-
+                await _stream.WriteAsync(lengthPrefix, 0, sizeof(int), ct).ConfigureAwait(false);
                 if (packet.Length != 0)
                 {
-                    await Stream.WriteAsync(packet, 0, packet.Length, ct).ConfigureAwait(false);
+                    await _stream.WriteAsync(packet, 0, packet.Length, ct).ConfigureAwait(false);
                 }
-
-                writing.OnNext(false);
             }
         }
+
+        private Task<byte[]> WriteKeepAliveAsync() =>
+            WritePacketAsync(Util.ZeroLengthPacket, CancellationToken.None)
+                .ContinueWith(_ => Util.ZeroLengthPacket, TaskContinuationOptions.ExecuteSynchronously);
 
         private async Task<byte[]> ReadStreamAsync(int bytesCount, CancellationToken ct)
         {
             var buffer = new byte[bytesCount];
             for (var totalBytesReceived = 0; totalBytesReceived < bytesCount;
-                totalBytesReceived += await Stream.ReadAsync(buffer, totalBytesReceived, bytesCount - totalBytesReceived, ct))
+                totalBytesReceived += await _stream.ReadAsync(buffer, totalBytesReceived, bytesCount - totalBytesReceived, ct))
             {
             }
 
             return buffer;
+        }
+
+        private struct OperationNotifier : IDisposable
+        {
+            private readonly IObserver<bool> _observer;
+
+            public OperationNotifier(IObserver<bool> observer)
+            {
+                _observer = observer ?? throw new ArgumentNullException(nameof(observer));
+                _observer.OnNext(true);
+            }
+
+            public void Dispose() => _observer.OnNext(false);
         }
     }
 }
