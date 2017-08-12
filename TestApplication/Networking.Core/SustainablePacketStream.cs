@@ -2,6 +2,7 @@
 {
     using System;
     using System.IO;
+    using System.Reactive;
     using System.Reactive.Concurrency;
     using System.Reactive.Linq;
     using System.Reactive.Subjects;
@@ -10,8 +11,8 @@
 
     public class SustainablePacketStream : IDisposable
     {
-        private readonly Subject<bool> _reading = new Subject<bool>();
-        private readonly Subject<bool> _writing = new Subject<bool>();
+        private readonly ISubject<bool> _reading = new BehaviorSubject<bool>(false);
+        private readonly ISubject<bool> _writing = new BehaviorSubject<bool>(false);
         private readonly Stream _stream;
 
         public SustainablePacketStream(Stream stream, TimeSpan keepAlivePeriod)
@@ -26,13 +27,23 @@
                 .Where(x => x.Length != 0);
         }
 
-        private IObservable<byte[]> KeepAlives() => _writing
-            .ToPulsar(TimeSpan.FromSeconds(1))
-            .Merge(_reading.ToPulsar(TimeSpan.FromSeconds(1)))
-            .Window(KeepAliveTimeout)
-            .SelectMany(x => x.Any())
-            .Where(x => !x)
-            .SelectMany(_ => WriteKeepAliveAsync());
+        private IObservable<byte[]> KeepAlives()
+        {
+            var ioOps = _writing.CombineLatest(_reading, (w, r) => w || r);
+
+            return ioOps
+                .DistinctUntilChanged()
+                .Where(on => on)
+                .SelectMany(Observable
+                    .Interval(TimeSpan.FromSeconds(KeepAliveTimeout.TotalSeconds / 4))
+                    .StartWith(0)
+                    .TakeUntil(ioOps.Where(on => !on).ObserveOn(new EventLoopScheduler())))
+                .Select(_ => Unit.Default)
+                .Window(KeepAliveTimeout)
+                .SelectMany(x => x.Any())
+                .Where(x => !x)
+                .SelectMany(_ => WriteKeepAliveAsync());
+        }
 
         public IObservable<byte[]> Messages { get; }
 
@@ -71,11 +82,11 @@
                 throw new ArgumentNullException(nameof(packet));
             }
 
-            using (new OperationNotifier(_writing))
+            var lengthPrefix = BitConverter.GetBytes(packet.Length);
+            await _stream.WriteAsync(lengthPrefix, 0, sizeof(int), ct).ConfigureAwait(false);
+            if (packet.Length != 0)
             {
-                var lengthPrefix = BitConverter.GetBytes(packet.Length);
-                await _stream.WriteAsync(lengthPrefix, 0, sizeof(int), ct).ConfigureAwait(false);
-                if (packet.Length != 0)
+                using (new OperationNotifier(_writing))
                 {
                     await _stream.WriteAsync(packet, 0, packet.Length, ct).ConfigureAwait(false);
                 }

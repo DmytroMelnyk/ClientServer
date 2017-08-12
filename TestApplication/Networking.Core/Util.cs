@@ -17,7 +17,7 @@
                 throw new ArgumentNullException(nameof(message));
             }
 
-            using (MemoryStream stream = new MemoryStream())
+            using (var stream = new MemoryStream())
             {
                 new BinaryFormatter().Serialize(stream, message);
                 return stream.ToArray();
@@ -31,7 +31,7 @@
                 return null;
             }
 
-            using (MemoryStream stream = new MemoryStream(binaryMessage))
+            using (var stream = new MemoryStream(binaryMessage))
             {
                 return new BinaryFormatter().Deserialize(stream);
             }
