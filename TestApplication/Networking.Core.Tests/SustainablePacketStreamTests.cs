@@ -49,8 +49,7 @@ namespace Networking.Core.Tests
             var keepAliveHeader = BitConverter.GetBytes(0);
             var stream = new Mock<Stream>();
             stream
-                .Setup(x => x.ReadAsync(It.IsAny<byte[]>(), 0, sizeof(int),
-                    It.IsAny<CancellationToken>()))
+                .Setup(x => x.ReadAsync(It.IsAny<byte[]>(), 0, sizeof(int), It.IsAny<CancellationToken>()))
                 .Returns(Task.Delay(Timeout.Infinite).ContinueWith(_ => default(int)));
 
             Expression<Func<Stream, Task>> assertedExpression =
@@ -59,14 +58,13 @@ namespace Networking.Core.Tests
 
             var keepAliveCounter = 0;
             var tcs = new TaskCompletionSource<bool>();
-            stream.Setup(assertedExpression)
-                .Callback(() =>
+            stream.Setup(assertedExpression).Callback(() =>
                 {
                     TestContext.WriteLine($"Keepalive at: {DateTime.Now:hh:mm:ss.ff}");
                     if (++keepAliveCounter == expectedKeepAliveCounter)
                         tcs.TrySetResult(true);
                 })
-                .Returns(Task.Delay(10));
+                .Returns(Task.CompletedTask);
 
             var sustainablePacketStream = new SustainablePacketStream(stream.Object, TimeSpan.FromSeconds(keepAliveSeconds));
             sustainablePacketStream.Messages.IgnoreElements().Subscribe();
@@ -86,19 +84,16 @@ namespace Networking.Core.Tests
             var stream = new Mock<Stream>();
 
             stream
-                .Setup(x => x.ReadAsync(It.IsAny<byte[]>(), 0, sizeof(int),
-                    It.IsAny<CancellationToken>()))
-                .Callback((byte[] buffer, int offset, int count, CancellationToken ct) => 
+                .Setup(x => x.ReadAsync(It.IsAny<byte[]>(), 0, sizeof(int), It.IsAny<CancellationToken>()))
+                .Callback((byte[] buffer, int offset, int count, CancellationToken ct) =>
                     Array.Copy(BitConverter.GetBytes(40000), buffer, buffer.Length))
                 .ReturnsAsync(sizeof(int));
 
             stream
-                .Setup(x => x.ReadAsync(It.IsAny<byte[]>(), 0, 40000,
-                    It.IsAny<CancellationToken>()))
+                .Setup(x => x.ReadAsync(It.IsAny<byte[]>(), 0, 40000, It.IsAny<CancellationToken>()))
                 .Returns(Task.Delay(Timeout.Infinite).ContinueWith(_ => default(int)));
 
-            var keepAliveTimeout = TimeSpan.FromSeconds(0.1);
-            var sustainablePacketStream = new SustainablePacketStream(stream.Object, keepAliveTimeout);
+            var sustainablePacketStream = new SustainablePacketStream(stream.Object, TimeSpan.FromSeconds(0.1));
             sustainablePacketStream.Messages.IgnoreElements().Subscribe();
 
             await Task.Delay(5000);
