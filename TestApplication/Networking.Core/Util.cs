@@ -1,4 +1,6 @@
-﻿namespace Networking.Core
+﻿using System.Reactive.Concurrency;
+
+namespace Networking.Core
 {
     using System;
     using System.IO;
@@ -37,15 +39,15 @@
             }
         }
 
-        public static IObservable<Unit> ToPulsar(this IObservable<bool> operationStartStopNotifier, TimeSpan period)
+        public static IObservable<Unit> ToPulsar(this IObservable<bool> operationStartStopNotifierHotObservable, TimeSpan period)
         {
-            return operationStartStopNotifier
+            return operationStartStopNotifierHotObservable
                 .DistinctUntilChanged()
                 .Where(on => on)
                 .SelectMany(Observable
                     .Interval(period)
-                    .StartWith(0) // starts timer immediately
-                    .TakeUntil(operationStartStopNotifier.Where(on => !on)))
+                    .StartWith(0)
+                    .TakeUntil(operationStartStopNotifierHotObservable.Where(on => !on).ObserveOn(new EventLoopScheduler())))
                 .Select(_ => Unit.Default);
         }
     }

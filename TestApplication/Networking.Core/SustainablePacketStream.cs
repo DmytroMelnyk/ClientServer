@@ -29,16 +29,9 @@
 
         private IObservable<byte[]> KeepAlives()
         {
-            var ioOps = _writing.CombineLatest(_reading, (w, r) => w || r);
-
-            return ioOps
-                .DistinctUntilChanged()
-                .Where(on => on)
-                .SelectMany(Observable
-                    .Interval(TimeSpan.FromSeconds(KeepAliveTimeout.TotalSeconds / 4))
-                    .StartWith(0)
-                    .TakeUntil(ioOps.Where(on => !on).ObserveOn(new EventLoopScheduler())))
-                .Select(_ => Unit.Default)
+            return _writing
+                .CombineLatest(_reading, (w, r) => w || r)
+                .ToPulsar(TimeSpan.FromSeconds(KeepAliveTimeout.TotalSeconds / 4))
                 .Window(KeepAliveTimeout)
                 .SelectMany(x => x.Any())
                 .Where(x => !x)

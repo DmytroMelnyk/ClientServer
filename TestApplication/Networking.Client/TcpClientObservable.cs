@@ -18,7 +18,7 @@
 
         public TcpClientObservable(params IPEndPoint[] ipEndPoints)
         {
-            Messages = Observable.OnErrorResumeNext(ipEndPoints.Select(GetConnection));
+            Messages = ipEndPoints.Select(GetConnection).OnErrorResumeNext();
         }
 
         private IObservable<object> GetConnection(IPEndPoint endPoint)
