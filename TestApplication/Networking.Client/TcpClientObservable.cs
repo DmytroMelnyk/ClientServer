@@ -29,7 +29,9 @@
                 client.Connect(endPoint.Address, endPoint.Port);
                 var networkStream = new SustainablePacketStream(client.GetStream(), TimeSpan.FromSeconds(5));
                 _sustainableMessageStream = new SustainableMessageStream(networkStream);
-                return new CompositeDisposable(_sustainableMessageStream.Messages.Subscribe(observer), client);
+                return new CompositeDisposable(_sustainableMessageStream
+                    .Messages.Do(_ => { }, Console.WriteLine, () => { })
+                    .Subscribe(observer), client);
             });
         }
 

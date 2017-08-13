@@ -73,6 +73,7 @@
                 // read packet body
                 return await ReadStreamAsync(length, ct).ConfigureAwait(false);
             }
+
         }
 
         public async Task WritePacketAsync(byte[] packet, CancellationToken ct)
