@@ -17,6 +17,7 @@
                     using (new TcpServerObservable(new TcpListenerObservable(ipEndPoint)))
                     {
                         Console.WriteLine("Press any key to stop server...");
+                        Console.WriteLine($"Listening on: {ipEndPoint.Port}");
                         Console.ReadLine();
                     }
                 }
